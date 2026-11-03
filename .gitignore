@@ -1,0 +1,9 @@
+# Dependencies and build output
+node_modules/
+site/
+# The mobile project, including the Google Play signing key — never publish it
+Mobile/
+# Local editor/agent settings
+.claude/
+github-upload/
+
