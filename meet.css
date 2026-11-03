@@ -1,0 +1,111 @@
+/* Meeting room («حلقة»): builds on the app's colour tokens in style.css. */
+.meet-body{min-height:100vh;min-height:100dvh}
+.small{font-size:11px}
+
+/* ---------- Lobby ---------- */
+.lobby{min-height:100vh;display:grid;place-items:center;padding:24px 16px}
+.lobby-card{width:min(920px,100%)}
+.back{display:inline-block;margin-bottom:12px;font-size:12px;text-decoration:none}
+.lobby-head{display:flex;gap:14px;align-items:center;margin-bottom:18px}
+.lobby-head img{border-radius:12px}.lobby-head h1{margin:0;font-size:24px}.lobby-head p{margin:2px 0 0}
+.lobby-grid{display:grid;grid-template-columns:1.3fr 1fr;gap:22px;align-items:start}
+.preview{position:relative;border-radius:16px;overflow:hidden;background:#0f1714;aspect-ratio:16/9}
+.preview video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+.preview-off{position:absolute;inset:0;display:grid;place-items:center;color:#cfd8d3;font-size:14px}
+.preview-tools{position:absolute;bottom:12px;left:0;right:0;display:flex;justify-content:center;gap:10px}
+.round{width:46px;height:46px;border-radius:50%;padding:0;font-size:18px;background:rgba(255,255,255,.92);color:#1f2937}
+.round:not(.on){background:#c0392b;color:#fff}
+.media-note{position:absolute;top:8px;right:10px;left:10px;margin:0;font-size:11px;color:#f3d9a4;text-shadow:0 1px 2px #000}
+.join-form{display:flex;flex-direction:column;gap:12px}
+.join-form label{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--muted)}
+.join-form input{padding:11px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);color:var(--ink);font:inherit;font-size:15px}
+.join-error{color:var(--bad);min-height:1em;margin:0;font-size:13px}
+
+/* ---------- Meeting ---------- */
+.meeting{height:100vh;height:100dvh;display:flex;flex-direction:column;background:#0f1714;color:#e3ebe6}
+.meeting[hidden]{display:none}
+.meet-top{display:flex;align-items:center;gap:8px;padding:10px 16px;background:#16211d;border-bottom:1px solid #2a3a33}
+.meet-top .spacer{flex:1}
+.pill{padding:3px 10px;border-radius:20px;background:#22322c;font-size:11px}
+.pill.rec{background:#c0392b;color:#fff;animation:pulseDot 1.5s infinite}
+.pill.warn{background:#5a4314;color:#f3d9a4}
+.meet-main{flex:1;display:flex;min-height:0}
+.stage{position:relative;flex:1;display:flex;flex-direction:column;gap:10px;padding:10px;min-width:0;overflow:auto}
+.grid{flex:1;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(280px,100%),1fr));grid-auto-rows:minmax(160px,1fr);gap:10px;align-content:center}
+.board-open .grid{flex:none;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));grid-auto-rows:96px}
+.tile{position:relative;border-radius:14px;overflow:hidden;background:#1b2823;border:2px solid transparent;transition:border-color .15s;cursor:pointer}
+.tile video{width:100%;height:100%;object-fit:cover;background:#1b2823}
+.tile.me video{transform:scaleX(-1)}.tile.me.screen video{transform:none}
+.tile.screen video{object-fit:contain;background:#000}
+.tile.speaking{border-color:#3fa476}
+.tile.pinned{grid-column:1/-1;grid-row:span 2}
+.tile .label{position:absolute;bottom:8px;right:8px;display:flex;gap:6px;align-items:center;padding:3px 9px;border-radius:8px;background:rgba(0,0,0,.55);font-size:12px}
+.tile .hand{position:absolute;top:8px;right:8px;font-size:22px;animation:wordIn .3s ease}
+.tile .status{position:absolute;top:8px;left:8px;font-size:11px;padding:2px 8px;border-radius:8px;background:rgba(0,0,0,.5)}
+.tile .avatar{position:absolute;inset:0;display:grid;place-items:center;font-size:42px;font-weight:700;color:#cfe3da;background:radial-gradient(circle,#24443a,#1b2823)}
+
+.board-wrap{display:flex;flex-direction:column;gap:6px;flex:1;min-height:0}
+.board-wrap[hidden]{display:none}
+.board-tools{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:6px;border-radius:12px;background:#16211d}
+.board-tools button{padding:6px 9px;border-radius:8px;background:#22322c;color:#e3ebe6;font-size:14px;min-width:34px}
+.board-tools button.on{background:#d4b46a;color:#1f2937}
+.board-tools .sep{width:1px;height:24px;background:#2a3a33;margin:0 4px}
+.colors{display:flex;gap:4px}
+.board-tools .color{width:24px;height:24px;min-width:0;padding:0;border-radius:50%;background:var(--c);border:2px solid #16211d;outline:2px solid transparent}
+.board-tools .color.on{outline-color:#d4b46a;background:var(--c)}
+.size{display:flex;align-items:center;gap:6px;font-size:11px;color:#93a39a}.size input{width:80px;accent-color:#d4b46a}
+.ayah-tool{display:flex;gap:4px}.ayah-tool input{width:84px;padding:6px;border-radius:8px;border:1px solid #2a3a33;background:#0f1714;color:#e3ebe6;font:inherit;font-size:13px}
+.board-area{flex:1;min-height:0;overflow:auto}
+.board-area canvas{display:block;background:#fff;border-radius:12px;touch-action:none;cursor:crosshair;box-shadow:0 6px 20px rgba(0,0,0,.35)}
+
+.reactions{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.reaction{position:absolute;bottom:10px;font-size:34px;animation:floatUp 2.6s ease-out forwards}
+.reaction small{display:block;font-size:11px;text-align:center;color:#e3ebe6}
+@keyframes floatUp{0%{transform:translateY(0);opacity:0}10%{opacity:1}100%{transform:translateY(-70vh);opacity:0}}
+
+.side{width:330px;display:flex;flex-direction:column;background:#16211d;border-inline-start:1px solid #2a3a33}
+.side[hidden]{display:none}
+.side-tabs{display:flex;gap:4px;padding:8px;border-bottom:1px solid #2a3a33}
+.side-tabs button[role=tab]{flex:1;padding:8px;border-radius:8px;background:transparent;color:#93a39a;font-size:13px}
+.side-tabs button[aria-selected=true]{background:#22322c;color:#e3ebe6}
+.side .icon-btn{background:#22322c;color:#e3ebe6;width:34px;height:34px}
+.chat-pane{flex:1;display:flex;flex-direction:column;min-height:0}
+.chat-pane[hidden]{display:none}
+.chat-log{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px}
+.chat-msg{padding:8px 11px;border-radius:12px;background:#22322c;font-size:13px;line-height:1.8;white-space:pre-wrap;word-break:break-word}
+.chat-msg.mine{background:#1f5c4b}
+.chat-msg b{display:block;font-size:11px;color:#d4b46a}
+.chat-msg time{font-size:10px;color:#93a39a;margin-inline-start:6px}
+.chat-form{display:flex;gap:6px;padding:10px;border-top:1px solid #2a3a33}
+.chat-form input{flex:1;padding:10px;border-radius:10px;border:1px solid #2a3a33;background:#0f1714;color:#e3ebe6;font:inherit}
+.chat-form .primary{width:auto}
+.people{list-style:none;margin:0;padding:8px;overflow-y:auto}
+.people[hidden]{display:none}
+.people li{display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:10px}
+.people li:nth-child(odd){background:#1b2823}
+.people .who{flex:1}.people .icons{font-size:14px;letter-spacing:4px}
+
+.controls{display:flex;justify-content:center;flex-wrap:wrap;gap:6px;padding:10px 10px calc(10px + env(safe-area-inset-bottom));background:#16211d;border-top:1px solid #2a3a33}
+.ctl{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:74px;padding:8px 10px;border-radius:12px;background:#22322c;color:#e3ebe6}
+.ctl span{font-size:20px}.ctl small{font-size:10px;color:#cfd8d3}
+.ctl:hover{background:#2c4038}
+.ctl[aria-pressed=true]{background:#2f6f5c}
+#cMic:not(.on),#cCam:not(.on){background:#7a2e26}
+.ctl.leave{background:#c0392b}.ctl.leave:hover{background:#a93226}
+.badge-dot{position:absolute;top:6px;left:14px;width:10px;height:10px;border-radius:50%;background:#e74c3c}
+.react-wrap{position:relative}
+.react-menu{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);display:flex;gap:4px;padding:6px;margin-bottom:6px;border-radius:14px;background:#22322c;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.react-menu[hidden]{display:none}
+.react-menu button{font-size:22px;padding:4px 6px;background:transparent}
+
+@media (max-width:760px){
+  .lobby-grid{grid-template-columns:1fr}
+  .side{position:fixed;inset:auto 0 0 0;height:60vh;width:auto;z-index:5;border-radius:16px 16px 0 0}
+  .ctl{min-width:58px;padding:7px 6px}.ctl small{display:none}
+  .meet-top #invite{font-size:11px;padding:7px 9px}
+  .grid{grid-auto-rows:minmax(130px,1fr)}
+}
+
+/* Typing on the meeting board */
+.board-text{z-index:2;padding:2px 4px;border:2px dashed #d4b46a;border-radius:6px;background:rgba(255,255,255,.92);resize:none;overflow:hidden;outline:none;margin:0;box-sizing:content-box;min-width:120px}
+.ayah-tool input.bad{border-color:#c0392b}

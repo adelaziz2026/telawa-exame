@@ -1,0 +1,19 @@
+# Render.com Blueprint: the full app (pages + server), so the meeting room («حلقة التلاوة») works online.
+# Render: New → Blueprint → choose this repository. Free plan: the service sleeps after ~15 minutes without
+# visitors and takes about a minute to wake on the next visit.
+services:
+  - type: web
+    name: telawa-exame
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: node server.cjs
+    healthCheckPath: /api/health
+    envVars:
+      # Listen on all interfaces (the default 127.0.0.1 is for running on your own computer only).
+      - key: HOST
+        value: 0.0.0.0
+      # Optional: Claude chat for the assistant. Anyone who opens the site can then use it at your expense,
+      # so leave it empty unless you accept that (the assistant still works in local mode without it).
+      - key: ANTHROPIC_API_KEY
+        sync: false
