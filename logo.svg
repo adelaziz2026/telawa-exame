@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+  <rect width="48" height="48" rx="11" fill="#185c4c"/>
+  <!-- Rehal (reading stand) -->
+  <path d="M14 42L34 33.5M34 42L14 33.5" stroke="#b08a45" stroke-width="2.6" stroke-linecap="round"/>
+  <!-- Cover -->
+  <path d="M24 15.5C19 13 12 13 6.5 14.8V36C12 34.2 19 34.2 24 37C29 34.2 36 34.2 41.5 36V14.8C36 13 29 13 24 15.5Z" fill="#d4b46a"/>
+  <!-- Pages -->
+  <path d="M24 14C19.5 11.4 13.5 11.4 9 13V33.2C13.5 31.6 19.5 31.6 24 34.2Z" fill="#fbf7ea"/>
+  <path d="M24 14C28.5 11.4 34.5 11.4 39 13V33.2C34.5 31.6 28.5 31.6 24 34.2Z" fill="#f3ecd6"/>
+  <!-- Lines of text -->
+  <g stroke="#185c4c" stroke-opacity=".55" stroke-width="1.1" stroke-linecap="round">
+    <path d="M12 18.5H21M12 22.5H21M12 26.5H21M27 18.5H36M27 22.5H36M27 26.5H36"/>
+  </g>
+  <!-- Spine -->
+  <path d="M24 14V34.2" stroke="#b08a45" stroke-width="1"/>
+  <!-- Small eight-pointed star ornament above the book -->
+  <g fill="#d4b46a" transform="translate(24 8.2)">
+    <rect x="-2.2" y="-2.2" width="4.4" height="4.4"/>
+    <rect x="-2.2" y="-2.2" width="4.4" height="4.4" transform="rotate(45)"/>
+  </g>
+</svg>
