@@ -3,7 +3,8 @@ const $=id=>document.getElementById(id);
 const NATIVE=!!globalThis.Capacitor?.isNativePlatform?.();
 if(NATIVE)document.documentElement.classList.add('native');
 // On free static hosting (GitHub Pages, Netlify…) there is no server either: detect it and hide the same features.
-else fetch('api/health',{cache:'no-store'}).then(r=>{if(!r.ok)throw 0;}).catch(()=>document.documentElement?.classList.add('no-server'));
+// Only a definite 404 means static hosting: a server that is waking up (free hosting sleeps) or a slow network must not hide the meeting.
+else fetch('api/health',{cache:'no-store'}).then(r=>{if(r.status===404)document.documentElement?.classList.add('no-server');}).catch(()=>{});
 // Start-up guard: if anything stops the page from starting (for example an old cached file that no longer matches
 // the others), say so and offer a repair instead of showing "loading" forever.
 function startupFailed(detail){

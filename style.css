@@ -382,3 +382,34 @@ footer{border-top:1px solid var(--line);padding:20px;text-align:center;color:var
 .native .meet-link,.native .meet-btn,.no-server .meet-link,.no-server .meet-btn{display:none!important}
 .native #engine option[value="browser"]{display:none}
 .native #install{display:none!important}
+
+/* Phones: the sidebar link is hidden, so the header button carries a visible label. */
+.meet-btn-label{display:none}
+@media (max-width:650px){
+  .meet-btn{width:auto;padding:0 14px 0 12px;gap:6px;border-radius:20px;display:inline-flex;align-items:center;font-size:15px}
+  .meet-btn::after{border-radius:22px}
+  /* More specific than the phone rule that hides the header's first span (the breadcrumb). */
+  header .meet-btn .meet-btn-label{display:inline;font-size:13px;font-weight:600;color:#fff}
+}
+
+/* Meeting entry points: a clear white camera icon and large, bold text (replaces the 🎥 emoji). */
+.meet-svg{display:block;width:24px;height:24px;color:#fff}
+.meet-icon{width:48px;height:48px;border-radius:14px;background:rgba(255,255,255,.22)}
+.meet-icon .meet-svg{width:28px;height:28px}
+.meet-text strong{font-size:19px;font-weight:800;letter-spacing:-.2px}
+.meet-text small{font-size:12.5px}
+.meet-arrow{font-size:22px;font-weight:700}
+/* Header button: always a labelled pill, on every screen size. */
+header .meet-btn{display:inline-flex;align-items:center;gap:8px;width:auto;height:44px;padding:0 18px 0 16px;border-radius:24px;font-size:16px;font-weight:800;color:#fff;text-decoration:none;box-shadow:0 6px 16px rgba(24,92,76,.3)}
+header .meet-btn::after{border-radius:26px}
+header .meet-btn .meet-btn-label{display:inline;font-size:16px;font-weight:800;color:#fff}
+@media (max-width:650px){
+  header .meet-btn{height:42px;padding:0 16px 0 14px;font-size:15px}
+  header .meet-btn .meet-btn-label{font-size:15px}
+}
+.meet-link{gap:10px;padding:14px 12px}
+.meet-text strong{font-size:18px;white-space:nowrap}
+.meet-text small{white-space:nowrap}
+.meet-icon{width:44px;height:44px}
+/* A calm, fixed gold outline instead of the spreading ring, so neighbouring buttons stay clear. */
+header .meet-btn::after{inset:-3px;animation:none;border:2px solid rgba(212,180,106,.75)}
