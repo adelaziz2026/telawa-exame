@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>حلقة التلاوة | اختبار التلاوة</title><meta name="theme-color" content="#185c4c"><link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icons/logo.svg" type="image/svg+xml"><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="meet.css"></head>
+<body class="meet-body">
+<section id="lobby" class="lobby">
+ <div class="lobby-card card">
+  <a class="back" href="./">→ العودة إلى التطبيق</a>
+  <div class="lobby-head"><img src="icons/logo.svg" alt="" width="48" height="48"><div><h1>حلقة التلاوة</h1><p class="muted">اجتماع بالصوت والصورة مع سبورة مشتركة ومشاركة الشاشة — حتى 8 مشاركين.</p></div></div>
+  <div class="lobby-grid">
+   <div class="preview"><video id="preview" autoplay muted playsinline></video><div id="previewOff" class="preview-off" hidden>الكاميرا مغلقة</div>
+    <div class="preview-tools"><button id="pMic" class="round on" type="button" aria-pressed="true" aria-label="الميكروفون">🎙</button><button id="pCam" class="round on" type="button" aria-pressed="true" aria-label="الكاميرا">📷</button></div>
+    <p id="mediaNote" class="muted media-note" role="status"></p></div>
+   <form id="joinForm" class="join-form">
+    <label>اسمك<input id="name" required maxlength="40" autocomplete="name" placeholder="مثال: أحمد"></label>
+    <label>رمز الغرفة<input id="room" required maxlength="40" pattern="[a-z0-9\-]{3,40}" dir="ltr" placeholder="halaqa-1234" title="حروف إنجليزية صغيرة وأرقام وشرطة (3–40)"></label>
+    <button class="primary" id="joinBtn">دخول الحلقة</button>
+    <button type="button" id="newRoom" class="soft">إنشاء غرفة جديدة</button>
+    <p id="joinError" class="join-error" role="alert"></p>
+    <p class="muted small">الصوت والصورة ينتقلان مباشرة بين المتصفحات. الكاميرا والميكروفون يعملان على هذا الحاسوب (localhost) أو عبر HTTPS.</p>
+   </form>
+  </div>
+ </div>
+</section>
+
+<section id="meeting" class="meeting" hidden>
+ <header class="meet-top">
+  <strong id="roomTitle"></strong><span id="peerCount" class="pill"></span><span id="recBadge" class="pill rec" hidden>● تسجيل</span><span id="netNote" class="pill warn" hidden></span>
+  <span class="spacer"></span><button id="invite" class="soft" type="button">🔗 نسخ رابط الدعوة</button>
+ </header>
+ <div class="meet-main">
+  <div class="stage" id="stage">
+   <div id="boardWrap" class="board-wrap" hidden>
+    <div class="board-tools" role="toolbar" aria-label="أدوات السبورة">
+     <button data-tool="pen" class="tool on" title="قلم">✏️</button><button data-tool="highlighter" class="tool" title="قلم تمييز">🖍</button><button data-tool="eraser" class="tool" title="ممحاة">🧽</button><button data-tool="line" class="tool" title="خط">╱</button><button data-tool="arrow" class="tool" title="سهم">↗</button><button data-tool="rect" class="tool" title="مستطيل">▭</button><button data-tool="ellipse" class="tool" title="دائرة">◯</button><button data-tool="text" class="tool" title="نص">T</button>
+     <span class="sep"></span>
+     <span class="colors"><button data-color="#185c4c" class="color on" style="--c:#185c4c" aria-label="أخضر"></button><button data-color="#1f2937" class="color" style="--c:#1f2937" aria-label="أسود"></button><button data-color="#c0392b" class="color" style="--c:#c0392b" aria-label="أحمر"></button><button data-color="#2563eb" class="color" style="--c:#2563eb" aria-label="أزرق"></button><button data-color="#b49860" class="color" style="--c:#b49860" aria-label="ذهبي"></button><button data-color="#f59e0b" class="color" style="--c:#f59e0b" aria-label="برتقالي"></button></span>
+     <label class="size">الحجم<input id="penSize" type="range" min="1" max="12" value="3"></label>
+     <span class="sep"></span>
+     <span class="ayah-tool"><input id="ayahRef" dir="ltr" placeholder="2:255" title="رقم السورة:رقم الآية (أو 1:1-7)"><button id="ayahAdd" type="button" title="عرض آية من المصحف على السبورة">📖 آية</button></span>
+     <span class="sep"></span>
+     <button id="undo" title="تراجع">↶</button><button id="clearBoard" title="مسح السبورة">🗑</button><button id="saveBoard" title="حفظ صورة">💾</button>
+    </div>
+    <div class="board-area"><canvas id="board" aria-label="السبورة المشتركة"></canvas></div>
+   </div>
+   <div id="grid" class="grid"></div>
+   <div id="reactions" class="reactions" aria-hidden="true"></div>
+  </div>
+  <aside id="side" class="side" hidden>
+   <div class="side-tabs" role="tablist"><button id="tabChat" role="tab" aria-selected="true">💬 الدردشة</button><button id="tabPeople" role="tab" aria-selected="false">👥 المشاركون</button><button id="sideClose" class="icon-btn" aria-label="إغلاق">✕</button></div>
+   <div id="chatPane" class="chat-pane"><div id="chatLog" class="chat-log" aria-live="polite"></div><form id="chatForm" class="chat-form"><input id="chatInput" maxlength="2000" placeholder="اكتب رسالة للجميع…" aria-label="رسالة"><button class="primary">إرسال</button></form></div>
+   <ul id="people" class="people" hidden></ul>
+  </aside>
+ </div>
+ <nav class="controls" aria-label="أدوات الاجتماع">
+  <button id="cMic" class="ctl on" aria-pressed="true"><span>🎙</span><small>الصوت</small></button>
+  <button id="cCam" class="ctl on" aria-pressed="true"><span>📷</span><small>الكاميرا</small></button>
+  <button id="cShare" class="ctl" aria-pressed="false"><span>🖥</span><small>مشاركة الشاشة</small></button>
+  <button id="cBoard" class="ctl" aria-pressed="false"><span>🖊</span><small>السبورة</small></button>
+  <button id="cChat" class="ctl" aria-pressed="false"><span>💬</span><small>الدردشة</small><b id="unread" class="badge-dot" hidden></b></button>
+  <button id="cPeople" class="ctl" aria-pressed="false"><span>👥</span><small>المشاركون</small></button>
+  <button id="cHand" class="ctl" aria-pressed="false"><span>✋</span><small>رفع اليد</small></button>
+  <span class="react-wrap"><button id="cReact" class="ctl" aria-expanded="false"><span>😊</span><small>تفاعل</small></button><span id="reactMenu" class="react-menu" hidden><button>👍</button><button>❤️</button><button>👏</button><button>🤲</button><button>😊</button><button>✅</button></span></span>
+  <button id="cRec" class="ctl" aria-pressed="false"><span>⏺</span><small>تسجيل</small></button>
+  <button id="cLeave" class="ctl leave"><span>📞</span><small>مغادرة</small></button>
+ </nav>
+</section>
+<div id="toast" class="toast" role="status" hidden></div>
+<script src="board.js"></script><script src="meet.js"></script>
+</body></html>
