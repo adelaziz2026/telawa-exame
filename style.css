@@ -413,3 +413,38 @@ header .meet-btn .meet-btn-label{display:inline;font-size:16px;font-weight:800;c
 .meet-icon{width:44px;height:44px}
 /* A calm, fixed gold outline instead of the spreading ring, so neighbouring buttons stay clear. */
 header .meet-btn::after{inset:-3px;animation:none;border:2px solid rgba(212,180,106,.75)}
+
+/* Phones and the mobile apps: the ayah fits on the first screen, the bottom bar shows the live status while reciting,
+   and the layout respects notches and the Android/iOS system bars. */
+html{-webkit-tap-highlight-color:transparent}
+.m-status{display:none}
+@media (max-width:650px){
+  aside{padding-top:calc(10px + env(safe-area-inset-top));padding-left:calc(16px + env(safe-area-inset-left));padding-right:calc(16px + env(safe-area-inset-right))}
+  .brand small{display:none}
+  .brand img{width:34px;height:34px}
+  .intro>div{display:none}
+  .intro{padding:10px 0 12px}
+  .steps{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;overflow:visible}
+  .steps li{justify-content:center;gap:5px;padding:6px 4px;font-size:12px}
+  .steps li::before{width:19px;height:19px;font-size:10.5px}
+  header .icon-btn:not(.meet-btn){width:42px;height:42px}
+  .reader .card-top h2{font-size:19px}
+  .search{font-size:13px}
+  input,select,textarea{font-size:16px;max-width:100%;min-width:0}
+  .workspace>*,.selectors label,.engine{min-width:0}
+  .verse-panel{min-height:170px;margin-top:10px;touch-action:pan-y}
+  .verse-tools{left:auto;right:8px}
+  .verse-controls button{min-height:46px}
+  button:active:not(:disabled){transform:scale(.97)}
+  .ai-fab{width:52px;height:52px;padding:0;justify-content:center;border-radius:50%;font-size:20px}
+  .mobile-bar{flex-wrap:wrap;padding-left:calc(14px + env(safe-area-inset-left));padding-right:calc(14px + env(safe-area-inset-right))}
+  .mobile-bar #mRecord{flex:1}
+  .mobile-bar #mRecord.live{background:#a8443c;color:#fff;animation:rec-pulse 1.6s ease-in-out infinite}
+  .m-status{display:block;flex-basis:100%;margin:0 0 2px;text-align:center;font-size:13px;font-weight:600;color:var(--accent)}
+  .m-status:empty{display:none}
+  .toast{bottom:calc(96px + env(safe-area-inset-bottom))}
+}
+@media (max-width:650px) and (hover:none){
+  .verse-panel::after{content:'⇆  اسحب الآية يمينًا أو يسارًا للتنقل';display:block;margin-top:6px;font-size:11.5px;color:var(--muted);opacity:.8}
+}
+@keyframes rec-pulse{50%{box-shadow:0 0 0 6px rgba(168,68,60,.25)}}
