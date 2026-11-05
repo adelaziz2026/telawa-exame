@@ -390,8 +390,16 @@ applyScale();
 for(const [id,delta]of [['fontUp',0.1],['fontDown',-0.1]])$(id).onclick=()=>{verseScale=Math.round(Math.min(1.6,Math.max(0.8,verseScale+delta))*10)/10;save('verseScale',verseScale);applyScale();};
 $('mRecord').onclick=()=>$('record').click();$('mListen').onclick=()=>$('listen').click();
 // The phone bar mirrors the main record button's label and state.
-const syncMobile=()=>{$('mRecord').textContent=$('record').textContent;$('mRecord').disabled=$('record').disabled;};
-if(typeof MutationObserver!=='undefined')new MutationObserver(syncMobile).observe($('record'),{attributes:true,childList:true,characterData:true,subtree:true});
+// While a recitation is running it also shows the live status, so the ayah can stay on screen.
+let wasIdle=true;
+const syncMobile=()=>{const label=$('record').textContent,idle=label==='ابدأ التسميع';$('mRecord').textContent=label;$('mRecord').disabled=$('record').disabled;$('mRecord').classList.toggle?.('live',!idle);$('mStatus').textContent=idle?'':$('status').textContent;
+ if(wasIdle&&!idle&&globalThis.matchMedia?.('(max-width:650px)').matches){$('versePanel').scrollIntoView?.({behavior:'smooth',block:'center'});globalThis.navigator?.vibrate?.(30);}wasIdle=idle;};
+if(typeof MutationObserver!=='undefined')for(const id of ['record','status'])new MutationObserver(syncMobile).observe($(id),{attributes:true,childList:true,characterData:true,subtree:true});
+// Phones: swipe the ayah sideways to move between ayat (right = next, as pages turn in an Arabic book).
+let touch=null;
+$('versePanel').addEventListener?.('touchstart',e=>{const t=e.touches[0];touch=e.touches.length===1?{x:t.clientX,y:t.clientY,at:Date.now()}:null;},{passive:true});
+$('versePanel').addEventListener?.('touchend',e=>{if(!touch)return;const t=e.changedTouches[0],dx=t.clientX-touch.x,dy=t.clientY-touch.y,quick=Date.now()-touch.at<600;touch=null;
+ if(quick&&Math.abs(dx)>60&&Math.abs(dx)>Math.abs(dy)*1.5){const btn=$(dx>0?'next':'prev');if(!btn.disabled){step(dx>0?1:-1);globalThis.navigator?.vibrate?.(12);}}},{passive:true});
 // Shortcuts use physical key codes so they also work with an Arabic keyboard layout.
 document.onkeydown=e=>{if(e.ctrlKey||e.metaKey||e.altKey||/^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName||''))return;const action={ArrowLeft:()=>step(1),ArrowRight:()=>step(-1),KeyR:()=>$('record').click(),KeyL:()=>$('listen').click(),KeyH:()=>$('hide').click()}[e.code];if(action){e.preventDefault();action();}};
 // Installable app: cache for offline use, and offer an install button where the browser supports it.
