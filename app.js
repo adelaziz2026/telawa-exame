@@ -103,7 +103,7 @@ function showVerse(){
  else{$('verse').textContent=many?nums.map(n=>s.ayahs[n-1].text+marker(n)).join(' '):selected().text;$('hint').hidden=true;}
  $('basmala').textContent=s.basmala;$('basmala').hidden=!(s.basmala&&$('ayah').value==='1');
 }
-function render(){stopWordAudio();generation++;stop();hintLevel=0;$('audio').onended=null;$('audio').pause();$('audio').hidden=true;$('audioStatus').textContent='';$('transcript').value='';$('result').replaceChildren();$('resultLabel').textContent='بانتظار تلاوتك';$('resultIntro').textContent='بعد التسميع ستظهر الكلمات المطابقة والاختلافات المحتملة هنا.';$('smartWhy').textContent='';$('score').hidden=true;listened=reviewed=false;$('notes').hidden=true;$('notesList').replaceChildren();const a=selected(),s=Number($('surah').value);showVerse();showRef();$('prev').disabled=s===1&&a.numberInSurah===1;$('next').disabled=s===114&&a.numberInSurah===surahs[s-1].ayahs.length;save('position',{surah:s,ayah:a.numberInSurah});updateSteps();updateProgress();}
+function render(){stopWordAudio();generation++;stop();hintLevel=0;$('audio').onended=null;$('audio').pause();$('audio').hidden=true;$('audioStatus').textContent='';$('transcript').value='';$('result').replaceChildren();$('resultLabel').textContent='بانتظار تلاوتك';$('resultIntro').textContent='بعد التسميع ستظهر الكلمات المطابقة والاختلافات المحتملة هنا.';$('smartWhy').textContent='';$('score').hidden=true;listened=reviewed=false;$('notes').hidden=true;$('notesList').replaceChildren();const a=selected(),s=Number($('surah').value);showVerse();showRef();$('prev').disabled=s===1&&a.numberInSurah===1;$('next').disabled=s===114&&a.numberInSurah===surahs[s-1].ayahs.length;save('position',{surah:s,ayah:a.numberInSurah});updateSteps();updateProgress();tafsirShown=6;if($('tafsirBox')?.open)showTafsir();}
 function fillEnd(){const s=surahs[Number($('surah').value)-1],a=Number($('ayah').value),last=Math.min(s.ayahs.length,a+49);$('ayahEnd').replaceChildren(...Array.from({length:last-a+1},(_,i)=>new Option(a+i,a+i)));$('ayahEnd').disabled=$('ayah').disabled;}
 function fillAyahs(){const s=surahs[Number($('surah').value)-1];$('ayah').replaceChildren(...s.ayahs.map(a=>new Option(a.numberInSurah,a.numberInSurah)));fillEnd();}
 function changeSurah(){fillAyahs();render();}
@@ -354,6 +354,31 @@ $('resetData').onclick=()=>{
  for(const k of storedKeys())if(!PREFS.includes(k.slice(8)))localStorage.removeItem(k);
  location.reload();
 };
+// Tafsir panel: Ibn Kathir, Al-Qurtubi and Al-Muyassar for the first ayah of the selection. It only loads while open,
+// shows a few paragraphs at a time (Ibn Kathir can run to dozens), and keeps the last source chosen.
+let tafsirSource=load('tafsir','muyassar'),tafsirShown=6,tafsirToken=0;
+async function showTafsir(){
+ if(!$('tafsirBox')?.open||loading||!globalThis.QuranKnowledge)return;
+ const s=Number($('surah').value),a=rangeNumbers()[0],token=++tafsirToken;
+ for(const tab of $('tafsirBox').querySelectorAll?.('[data-src]')||[])tab.setAttribute('aria-selected',String(tab.dataset.src===tafsirSource));
+ $('tafsirRef').textContent=`${surahs[s-1].name} • الآية ${a}`;$('tafsirMore').hidden=true;$('tafsirSource').textContent='';
+ $('tafsirBody').replaceChildren(make('p','tafsir-loading','جارٍ تحميل التفسير…'));
+ try{
+  const t=await QuranKnowledge.tafsir(tafsirSource,s,a);if(token!==tafsirToken)return;
+  if(t.verses.length>1)$('tafsirRef').textContent=`${surahs[s-1].name} • تفسير الآيات ${t.verses[0].split(':')[1]}–${t.verses.at(-1).split(':')[1]} معًا`;
+  $('tafsirBody').replaceChildren(...(t.paragraphs.length?t.paragraphs.slice(0,tafsirShown).map(p=>make('p','',p)):[make('p','tafsir-loading','لا يوجد تفسير لهذه الآية في هذا المصدر.')]));
+  const rest=t.paragraphs.length-tafsirShown;$('tafsirMore').hidden=rest<=0;$('tafsirMore').textContent=`عرض المزيد (${rest} فقرة)`;
+  $('tafsirSource').textContent=`المصدر: ${t.name} — ${t.by}`;
+ }catch{if(token===tafsirToken)$('tafsirBody').replaceChildren(make('p','tafsir-error','تعذّر تحميل التفسير. تحقق من الإنترنت وحاول مرة أخرى.'));}
+}
+if($('tafsirBox')){
+ // Open by default (showing the short meaning); closing it is remembered.
+ if(load('tafsirOpen',true)===false)$('tafsirBox').open=false;
+ $('tafsirBox').ontoggle=()=>{save('tafsirOpen',$('tafsirBox').open);showTafsir();};
+ $('tafsirJump')&&($('tafsirJump').onclick=()=>{$('tafsirBox').open=true;showTafsir();$('tafsirBox').scrollIntoView?.({behavior:'smooth',block:'start'});});
+ for(const tab of $('tafsirBox').querySelectorAll?.('[data-src]')||[])tab.onclick=()=>{tafsirSource=tab.dataset.src;save('tafsir',tafsirSource);tafsirShown=6;showTafsir();};
+ $('tafsirMore').onclick=()=>{tafsirShown+=10;showTafsir();};
+}
 // Toast: a short confirmation for actions that have no other visible result.
 let toastTimer=0;
 function toast(message){const t=$('toast');t.textContent=message;t.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>{t.hidden=true;},2800);}

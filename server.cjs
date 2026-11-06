@@ -10,7 +10,7 @@ const host = process.env.HOST || '127.0.0.1';
 const types = {'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.webmanifest':'application/manifest+json; charset=utf-8','.png':'image/png','.svg':'image/svg+xml'};
 const compressible = new Set(['.html','.js','.css','.json','.webmanifest','.svg']);
 // Folders that live next to the app but must never be served (tooling, mobile builds, dependencies).
-const hidden = new Set(['node_modules','Mobile','data-src','site','github-upload']);
+const hidden = new Set(['node_modules','Mobile','data-src','site','github-upload','github-update']);
 // The on-device model needs transformers.js from jsdelivr (WASM, blob workers) and downloads weights from
 // huggingface.co, which redirects to other hosts; recitation audio and Quran APIs are also remote.
 const csp = ["default-src 'self'","script-src 'self' https://cdn.jsdelivr.net 'wasm-unsafe-eval' blob:","worker-src 'self' blob:","connect-src 'self' https:","media-src 'self' https: blob:","img-src 'self' data: blob:","style-src 'self' https://fonts.googleapis.com","font-src https://fonts.gstatic.com","manifest-src 'self'","object-src 'none'","base-uri 'self'","form-action 'none'","frame-ancestors 'none'"].join('; ');
