@@ -16,6 +16,8 @@ function checkAyah(surah,ayah){
  if(!surahs[surah-1])throw Error(`Surah ${surah} does not exist (1-114).`);
  if(!surahs[surah-1].ayahs[ayah-1])throw Error(`Surah ${surah} has ${surahs[surah-1].ayahs.length} ayat.`);
 }
+// Results show the Uthmani text the page displays, not the simple edition used for matching.
+const uthmani=x=>({surah:x.surah,surah_name:surahName(x.surah),ayah:x.ayah,text:surahs[x.surah-1].ayahs[x.ayah-1].text});
 const tools={
  get_app_state(){
   if(loading)return {loading:true};
@@ -50,6 +52,25 @@ const tools={
   return {playing:place(Number($('surah').value),nums),reciter:reciter().name,repeat:Number($('repeat').value)||1};
  },
  set_ayah_hidden({hidden}){if($('hide').checked!==hidden){$('hide').checked=hidden;$('hide').onchange();}return {hidden};},
+ // ---- Knowledge: tafsir, Quran word search, surah facts, hadith (all from sources, never from memory) ----
+ async get_tafsir({surah,ayah,source}){
+  checkAyah(surah,ayah);
+  const t=await QuranKnowledge.tafsir(source||'muyassar',surah,ayah);let text='';
+  for(const p of t.paragraphs){if(text.length+p.length>6000){text+=' …';break;}text+=(text?'\n':'')+p;}
+  return {source:t.name,author:t.by,covers_ayat:t.verses,text:text||'(no tafsir text for this ayah in this source)'};
+ },
+ search_quran({query,surah,partial,phrase}){
+  if(loading)throw Error('The Mushaf is still loading.');
+  const r=QuranKnowledge.searchQuran(simple,query,{surah:surah||null,partial:!!partial,phrase:!!phrase,limit:15});
+  return {query:r.query,ayat_count:r.total,occurrences:r.occurrences,results:r.results.map(uthmani)};
+ },
+ find_ayah({text}){
+  if(loading)throw Error('The Mushaf is still loading.');
+  const r=QuranKnowledge.findAyah(simple,text,{limit:5});
+  return {query:r.query,exact_match:r.exact,total:r.total,results:r.results.map(x=>({...uthmani(x),...(x.match?{words_matched_percent:x.match}:{})}))};
+ },
+ get_surah_info({surah}){if(loading)throw Error('The Mushaf is still loading.');return QuranKnowledge.surahInfo(surahs,surah);},
+ search_hadith({query,book}){return QuranKnowledge.searchHadith(query,{books:!book||book==='all'?undefined:[book],onLoading:name=>chip(`تحميل ${name} لأول مرة… قد يستغرق لحظات`)});},
  get_progress(){
   const keys=Object.keys(scores),values=Object.values(scores),now=Date.now();
   const weakest=keys.map(key=>{const [s,a]=key.split(':').map(Number),words=simple[s-1]?.ayahs[a-1]?.text.split(/\s+/).length||1,p=QuranLearning.recall(brain,key,now,words);return {surah:s,ayah:a,name:surahName(s),last_score:scores[key],predicted_recall:Math.round((p??scores[key]/100)*100)};})
@@ -58,7 +79,7 @@ const tools={
  },
 };
 // A short Arabic label shown in the chat for each action.
-const actionLabel={get_app_state:'قراءة حالة التطبيق',go_to_ayah:'فتح الآية',get_ayah_text:'قراءة نص الآية من المصحف',play_recitation:'تشغيل التلاوة',set_ayah_hidden:'إخفاء/إظهار الآية',get_progress:'قراءة تقدمك'};
+const actionLabel={get_tafsir:'قراءة التفسير',search_quran:'البحث في المصحف',find_ayah:'البحث عن الآية',get_surah_info:'معلومات السورة',search_hadith:'البحث في كتب السنة',get_app_state:'قراءة حالة التطبيق',go_to_ayah:'فتح الآية',get_ayah_text:'قراءة نص الآية من المصحف',play_recitation:'تشغيل التلاوة',set_ayah_hidden:'إخفاء/إظهار الآية',get_progress:'قراءة تقدمك'};
 
 // ---------- Chat log ----------
 function bubble(role,text){
@@ -154,9 +175,112 @@ function repeatIn(t){
 const CAN='أقدر من غير إنترنت أفتحلك سورة أو آية («افتح سورة الكهف»، «آية الكرسي»، «البقرة من آية 1 لحد 5»)، وأشغّلك التلاوة بصوت أي شيخ («شغّلها بصوت الحصري 3 مرات»)، وأخبّيلك الآية عشان تسمّع من حفظك، وأروح للآية اللي بعدها أو اللي قبلها، وأورّيك الآيات اللي محتاجة مراجعة، وأشرحلك أخطاء آخر تسميع.';
 // Runs one tool through the same path as Claude's tool calls, so the chat shows the same action chips.
 function act(name,input){const out=tools[name](input);chip(actionLabel[name]||name);return out;}
-function localTurn(text){
+// Knowledge requests in local mode, in Egyptian or standard phrasing (t is normalised, raw is what the user typed):
+//  tafsir:        «فسّر الآية»، «تفسير ابن كثير لآية الكرسي»، «يعني ايه الآية دي»، then «وعند السعدي؟» or «كمّل»
+//  word meaning:  «معنى كلمة الصمد»، «يعني ايه الفلق»
+//  find an ayah:  «فين الآية اللي بتقول وجعلنا من الماء كل شيء حي»، «فسّر قوله تعالى إن مع العسر يسرا»، then «افتحها»
+//  word search:   «ابحث عن كلمة الصبر»، «كام مرة اتذكرت الجنة»، «ابحث عن الرحمة في سورة الكهف»، then «افتح النتيجة 2»
+//  surah facts and hadith: «معلومات عن سورة الكهف»، «حديث عن النية»
+// Returns the reply, or null if the message is not such a request.
+let lastTafsir=null,lastResults=null;
+const SOURCES=[['saadi',/سعدي/],['ibn_kathir',/كثير/],['qurtubi',/قرطبي/],['tabari',/طبري/],['baghawi',/بغوي/],['wasit',/وسيط|طنطاوي/],['muyassar',/ميسر/]];
+const sourceIn=t=>SOURCES.find(([,re])=>re.test(t))?.[0]||null;
+const ORDINALS={الاولي:1,الاول:1,اول:1,التانيه:2,التاني:2,تاني:2,الثانيه:2,التالته:3,التالت:3,الثالثه:3,الرابعه:4,الخامسه:5};
+// Words that point at the ayah on screen rather than naming a word: «يعني ايه الآية دي».
+const POINTER=/^(?:(?:ال)?ايه|الايات|دي|ده|دا|سوره|السوره|هذه)(?: |$)/;
+const nameOf=n=>QuranCompare.normalize(surahName(n));
+// Counted nouns agree with the number as in speech: آية واحدة، آيتين، 5 آيات، 42 آية.
+const count=(n,one,two,few,unit)=>n===1?one:n===2?two:n<=10?`${n} ${few}`:`${n} ${unit}`;
+const ayat=n=>count(n,'آية واحدة','آيتين','آيات','آية'),times=n=>count(n,'مرة واحدة','مرتين','مرات','مرة');
+const refs=list=>list.map((x,i)=>`${i+1}) ${nameOf(x.surah)} ${x.ayah}`).join('، ');
+function quoteIn(t,raw){
+ const q=String(raw).match(/[«"“]([^»"”]{4,})[»"”]/)?.[1];if(q)return norm(q);
+ return (t.match(/قوله تعالي (.+)$/)||t.match(/(?:الايه|ايه|اللي)(?: اللي)? (?:بتقول|بيقول|تقول|يقول|بتبدا ب|فيها|فيه) (.+)$/)||t.match(/(?:انهي|اي|ايه) سوره (?:فيها|فيه|بتقول|اللي فيها) (.+)$/))?.[1]?.replace(/ (?:في|فى) (?:القران|المصحف).*$/,'').trim()||null;
+}
+async function tafsirReply(surah,ayah,source,intro=''){
+ const out=await tools.get_tafsir({surah,ayah,source});chip(`${actionLabel.get_tafsir}: ${out.source}`);
+ const paragraphs=out.text.split('\n').filter(Boolean),first=source==='muyassar'?paragraphs.length:2;
+ lastTafsir={surah,ayah,source,paragraphs,at:first};
+ // Keep the tafsir panel in step when the answer is about the ayah on screen.
+ if(Number($('surah').value)===surah&&rangeNumbers()[0]===ayah)$('tafsirBox')?.querySelector?.(`[data-src="${source}"]`)?.click();
+ const more=paragraphs.length>first?' … قول «كمّل» وأكمّلك.':'';
+ return `${intro}${out.source} — ${nameOf(surah)}، الآية ${ayah}: ${paragraphs.slice(0,first).join(' ')||'مفيش تفسير للآية دي في المصدر ده.'}${more}`;
+}
+async function knowledgeTurn(t,raw=t){
+ // Words are shown as the user wrote them («الجنة»), not in the normalised form used for matching («الجنه»).
+ const shown=q=>q.split(' ').map(w=>String(raw).split(/[\s«»"“”؟?،,.!]+/).find(r=>r&&norm(r)===w)||w).join(' ');
+ const current=()=>({surah:Number($('surah').value),ayah:rangeNumbers()[0]});
+ const where=()=>{const kursi=/ايه الكرسي/.test(t),surah=kursi?2:findSurahIn(t),ayah=kursi?255:+(t.match(/(?:الايه|ايه)(?: رقم)? (\d+)/)?.[1]||0);return surah?{surah,ayah:ayah||1}:{surah:current().surah,ayah:ayah||current().ayah};};
+ const after=re=>(t.match(re)?.[1]||'').replace(/ (في|فى) (القران|المصحف).*$/,'').trim();
+ // 1. Follow-ups on the last answer: more of the same tafsir, the same ayah from another book, or open a result.
+ if(lastTafsir&&/^(?:طب |طيب |و)?(?:كمل|اكمل|كمان|زود|الباقي|باقي التفسير|اكتر|المزيد|عايز اكتر|كمل التفسير|وبعدين)(?: |$)/.test(t)){
+  const {paragraphs,at}=lastTafsir;if(at>=paragraphs.length)return 'كده خلص تفسير الآية دي. تحب تسمع تفسير تاني؟ قول مثلًا «وعند القرطبي».';
+  lastTafsir.at=at+2;return paragraphs.slice(at,at+2).join(' ')+(lastTafsir.at<paragraphs.length?' … قول «كمّل» وأكمّلك.':' وكده خلص التفسير.');
+ }
+ const source=sourceIn(t);
+ if(lastTafsir&&source&&!t.replace(/(?:ال)?(?:سعدي|كثير|قرطبي|طبري|بغوي|وسيط|طنطاوي|ميسر)/g,'').replace(/(?:^| )(?:و?عند|طب|طيب|في|بتفسير|تفسير|و?ايه رايك|ابن|الامام|الشيخ|الحافظ|عايز|عاوز|و)(?= |$)/g,' ').trim())
+  return tafsirReply(lastTafsir.surah,lastTafsir.ayah,source);
+ if(lastResults?.length){
+  const n=+(t.match(/نتيجه(?: رقم)? (\d+)/)?.[1]||0)||(/(?:افتح|وديني|روح)/.test(t)&&ORDINALS[t.split(' ').find(w=>ORDINALS[w])])||(/^(?:افتحها|افتحهالي|افتحهولي|وديني عليها|روحلها)$/.test(t)?1:0);
+  if(n){const r=lastResults[n-1];if(!r)return `عندي ${lastResults.length} نتايج بس.`;const out=act('go_to_ayah',{surah:r.surah,ayah:r.ayah,to_ayah:null});return `فتحتلك ${out.opened}.`;}
+ }
+ // «معني» only as a whole word: it is also inside «سمعني» (play it for me).
+ const wantsTafsir=/(تفسير|فسر|(?:^| )معني(?: |$)|يعني ايه|شرح|سبب نزول|سبب النزول)/.test(t);
+ // 2. An ayah quoted from memory: find it, and explain it if asked.
+ const quote=quoteIn(t,raw);
+ if(quote&&quote.split(' ').length>=2){
+  const r=tools.find_ayah({text:quote});chip(actionLabel.find_ayah);
+  if(!r.total)return `مالقيتش آية فيها «${shown(quote)}». اتأكد من الكلام أو قول جزء تاني من الآية.`;
+  lastResults=r.results;
+  const best=r.results[0],sure=r.exact_match?'':' (مش متطابقة حرفيًا، دي أقرب آية)';
+  if(wantsTafsir)return tafsirReply(best.surah,best.ayah,source||'muyassar',`دي ${nameOf(best.surah)}، الآية ${best.ayah}${sure}. `);
+  if(r.results.length===1||!r.exact_match&&best.words_matched_percent>r.results[1].words_matched_percent)return `دي ${nameOf(best.surah)}، الآية ${best.ayah}${sure}. قول «افتحها» وأفتحهالك.`;
+  return `لقيتها في ${count(r.total,'مكان واحد','مكانين','أماكن','مكان')}: ${refs(r.results)}. قول «افتح النتيجة 1» مثلًا وأفتحهالك.`;
+ }
+ // 3. The meaning of one word: in the ayah on screen if it has the word, else where it first comes in the Mushaf.
+ const word=wantsTafsir&&(t.match(/(?:معني|تفسير|شرح) (?:كلمه|لفظ|لفظه) (.+)$/)||t.match(/(?:^| )معني (.+)$/)||t.match(/يعني ايه (.+)$/)||t.match(/^(.+) يعني ايه$/))?.[1]?.replace(/ (?:في|فى) (?:الايه|القران|المصحف|سوره).*$/,'').replace(/^(?:كلمه|لفظ|لفظه) /,'').trim();
+ if(word&&!POINTER.test(word)&&word.split(' ').length<=3){
+  const {surah,ayah}=current(),here=QuranKnowledge.searchQuran([{number:surah,ayahs:[simple[surah-1].ayahs[ayah-1]]}],word).total;
+  let at={surah,ayah};
+  if(!here){const r=tools.search_quran({query:word,surah:findSurahIn(t),partial:false,phrase:true});chip(actionLabel.search_quran);if(!r.ayat_count)return `مالقيتش كلمة «${shown(word)}» في المصحف بالشكل ده. اكتبها زي ما هي في الآية.`;at=r.results[0];}
+  return tafsirReply(at.surah,at.ayah,source||'muyassar',`كلمة «${shown(word)}» جت في ${nameOf(at.surah)}، الآية ${at.ayah}، ومعناها في سياق الآية: `);
+ }
+ // 4. Tafsir of an ayah by place (the one on screen by default). Asbab al-nuzul: Ibn Kathir mentions them.
+ if(wantsTafsir){const {surah,ayah}=where();return tafsirReply(surah,ayah,source||(/نزول/.test(t)?'ibn_kathir':'muyassar'));}
+ // 5. Surah facts.
+ if(/(معلومات|مكيه ولا مدنيه|مكيه|مدنيه|كام ايه|عدد ايات|عدد اياتها)/.test(t)&&(findSurahIn(t)||/السوره دي|السوره/.test(t))){
+  const i=tools.get_surah_info({surah:findSurahIn(t)||Number($('surah').value)});chip(actionLabel.get_surah_info);
+  return `${QuranCompare.normalize(i.name)} ${i.revelation}، عدد آياتها ${i.ayat} وكلماتها ${i.words}، في الجزء ${i.juz.join(' و')}${i.pages?` من صفحة ${i.pages[0]} لـ ${i.pages[1]}`:''}${i.sajda_ayat.length?`، وفيها سجدة في الآية ${i.sajda_ayat.join(' و')}`:''}.`;
+ }
+ // 6. Hadith.
+ if(/(حديث|احاديث|السنه|قال النبي|قال الرسول)/.test(t)){
+  const query=shown(after(/(?:حديث|احاديث|السنه)(?: عن| في| فيه| بيقول)? (.+)$/));
+  if(!query)return 'قوللي الحديث عن إيه؟ مثلًا: «حديث عن النية» أو «حديث فيه إنما الأعمال بالنيات».';
+  const r=await tools.search_hadith({query,book:'all'});chip(actionLabel.search_hadith);
+  if(!r.total)return `مالقيتش حديث فيه «${query}» في البخاري ومسلم والأربعين النووية. جرّب كلمات تانية من نص الحديث.`;
+  const h=r.results[0];return `لقيت ${count(r.total,'حديث واحد','حديثين','أحاديث','حديث')} فيه «${query}». ${r.total>1?'أولهم ':''}من ${h.book} رقم ${h.number}: ${h.text}`;
+ }
+ // 7. Word search, in the whole Mushaf or one surah, with how many times it comes.
+ if(/(ابحث|دور|فين|كام مره|عدد مرات|وردت|اتذكرت|اتكررت|جت كلمه)/.test(t)){
+  const inPart=t.match(/ (?:في|فى) (سوره .+)$/),surah=inPart?findSurahIn(inPart[1]):null;
+  const query=((t.match(/(?:كلمه|لفظ|لفظه) (.+)$/)||t.match(/(?:ابحث|دور|ابحثلي|دورلي)(?: عن| علي)? (.+)$/)||t.match(/(?:فين|كام مره|عدد مرات)(?: (?:اتذكرت|وردت|جت|ذكرت|اتكررت))? (.+)$/))?.[1]||'')
+   .replace(/ (?:في|فى) (?:سوره|القران|المصحف).*$/,'').replace(/ (?:اتذكرت|وردت|جت|ذكرت|اتكررت|موجوده|كام مره).*$/,'').replace(/^(?:جزء من |اي )?(?:كلمه|لفظ|لفظه) /,'').trim();
+  if(!query)return 'قوللي الكلمة اللي عايز تدور عليها، مثلًا: «ابحث عن كلمة الصبر» أو «كام مرة اتذكرت الجنة».';
+  const partial=/(جزء من|اي كلمه فيها|مشتقات|اشتقاقات)/.test(t),said=shown(query);
+  const r=tools.search_quran({query,surah,partial,phrase:query.includes(' ')});chip(actionLabel.search_quran);
+  const inSurah=surah?` في ${nameOf(surah)}`:'';
+  if(!r.ayat_count)return `«${said}» مش موجودة${inSurah} بالشكل ده. جرّب جزء من الكلمة («ابحث عن جزء من كلمة ${said}») أو من غير «ال».`;
+  lastResults=r.results;
+  const how=/(كام مره|عدد مرات|اتكررت)/.test(t)?`اتذكرت ${times(r.occurrences)} في ${ayat(r.ayat_count)}`:`جت في ${ayat(r.ayat_count)}`;
+  return `«${said}» ${how}${inSurah}. ${r.ayat_count>5?'أولهم':'وهي'}: ${refs(r.results.slice(0,5))}. قول «افتح النتيجة 1» وأفتحهالك.`;
+ }
+ return null;
+}
+async function localTurn(text){
  const t=norm(text);
  if(loading){bubble('assistant','المصحف لسه بيحمّل، استنى ثانية وجرّب تاني.');return;}
+ try{const answer=await knowledgeTurn(t,text);if(answer){bubble('assistant',answer);speak(answer);return;}}
+ catch(e){bubble('note','تعذّر الوصول للمصدر: '+String(e.message||e)+'. تحقق من الإنترنت.');return;}
  const said=[];let did=false;
  try{
   // 1. Where to go: «آية الكرسي», a surah by name or number, an ayah number, or a range.
@@ -207,7 +331,7 @@ async function checkStatus(){
  if(status.available&&!status.configured)bubble('note','المساعد شغّال بالوضع المحلي: بيفهم الأوامر الأساسية كتابة أو بالصوت. لو عايز محادثة حرة بالذكاء الاصطناعي ضيف مفتاح Claude API على الخادم (بص في README).');
  return status;
 }
-function useLocal(text){setBusy(true);try{localTurn(text);}finally{setBusy(false);}}
+async function useLocal(text){setBusy(true);try{await localTurn(text);}finally{setBusy(false);}}
 async function ask(text){
  text=text.trim();if(!text||busy)return;
  $('aiInput').value='';$('aiSuggest').hidden=true;bubble('user',text);
@@ -237,7 +361,7 @@ async function ask(text){
    // Run every requested tool, then return all results together in one message.
    const results=[];
    for(const use of data.content.filter(b=>b.type==='tool_use')){
-    try{const out=tools[use.name]?tools[use.name](use.input||{}):(()=>{throw Error('Unknown tool '+use.name);})();results.push({type:'tool_result',tool_use_id:use.id,content:JSON.stringify(out)});chip(actionLabel[use.name]||use.name);}
+    try{const out=tools[use.name]?await tools[use.name](use.input||{}):(()=>{throw Error('Unknown tool '+use.name);})();results.push({type:'tool_result',tool_use_id:use.id,content:JSON.stringify(out)});chip(actionLabel[use.name]||use.name);}
     catch(e){results.push({type:'tool_result',tool_use_id:use.id,content:String(e.message||e),is_error:true});chip((actionLabel[use.name]||use.name)+': '+(e.message||e),true);}
    }
    history.push({role:'user',content:results});

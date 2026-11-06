@@ -424,3 +424,90 @@ test('assistant understands Egyptian phrasing and says places naturally',async()
  assert.match(spoken.at(-1).text,/فتحتلك سورة، الآيات 1 إلى 3\. هشغّلك الآيات 1 إلى 3 بصوت/);
  await h.ctx.TarteelAssistant.ask('شغلها بصوت الحصري');assert.match(spoken.at(-1).text,/^هشغّلك سورة، الآيات 1 إلى 3 بصوت الحصري/);
 });
+// ---------- Knowledge: tafsir, Quran search, surah facts, hadith ----------
+const K=require('./knowledge.js');
+test('Quran word search matches whole words with attached prefixes, or any part of a word',()=>{
+ const S=require('./data/simple.json').data.surahs;
+ const sabr=K.searchQuran(S,'الصبر');assert.ok(sabr.total>=5);assert.ok(sabr.results.some(r=>r.surah===2&&r.ayah===45));
+ assert.ok(K.searchQuran(S,'كتاب').total>K.searchQuran(S,'كتاب',{surah:2}).total);
+ assert.ok(K.searchQuran(S,'تاب').results.every(r=>K.plain(r.text).split(' ').some(w=>/^(و|ف|ب|ل|ك|ال)*تاب$/.test(w))));
+ assert.ok(K.searchQuran(S,'صبر',{partial:true}).total>K.searchQuran(S,'صبر').total);
+ assert.equal(K.searchQuran(S,'').total,0);
+});
+test('surah facts come from the local Mushaf',()=>{
+ const i=K.surahInfo(require('./data/quran.json').data.surahs,18);
+ assert.equal(i.ayat,110);assert.equal(i.revelation,'مكية');assert.deepEqual(i.juz,[15,16]);
+ assert.deepEqual(K.surahInfo(require('./data/quran.json').data.surahs,32).sajda_ayat,[15]);
+ assert.throws(()=>K.surahInfo([],200),/1-114/);
+});
+test('tafsir text is reduced to plain paragraphs and long blocks are split',async()=>{
+ assert.deepEqual(K.paragraphs('<p>أ <span class="x">ب</span></p><p>ج</p>'),['أ ب','ج']);
+ const long='قوله تعالى : '+'كلام طويل. '.repeat(150)+'الثانية : '+'شرح. '.repeat(50);
+ const parts=K.paragraphs(long);assert.ok(parts.length>=3);assert.ok(parts.every(p=>p.length<=900));
+ const real=globalThis.fetch;let asked='';globalThis.fetch=async url=>{asked=url;return {ok:true,json:async()=>({tafsir:{text:'<p>هذه آية الكرسي</p>',verses:{'2:255':{}}}})};};
+ try{const t=await K.tafsir('ibn_kathir',2,255);assert.equal(t.name,'تفسير ابن كثير');assert.deepEqual(t.paragraphs,['هذه آية الكرسي']);assert.match(asked,/tafsirs\/14\/by_ayah\/2:255/);}
+ finally{globalThis.fetch=real;}
+ await assert.rejects(()=>K.tafsir('nobody',1,1),/Unknown tafsir/);
+});
+test('hadith search downloads a book once and matches all words without diacritics',async()=>{
+ const real=globalThis.fetch;let calls=0;globalThis.fetch=async()=>{calls++;return {ok:true,json:async()=>({hadiths:[{hadithnumber:1,text:'إِنَّمَا الْأَعْمَالُ بِالنِّيَّاتِ'},{hadithnumber:2,text:'الدِّينُ النَّصِيحَةُ'}]})};};
+ try{
+  const r=await K.searchHadith('انما الاعمال بالنيات',{books:['nawawi']});assert.equal(r.total,1);assert.equal(r.results[0].number,1);assert.equal(r.results[0].book,'الأربعون النووية');
+  await K.searchHadith('النصيحه',{books:['nawawi']});assert.equal(calls,1);
+ }finally{globalThis.fetch=real;}
+});
+test('assistant answers tafsir, word search, surah facts and hadith in local mode, from the sources',async()=>{
+ const h=await appHarness({fetch:async()=>({ok:true,json:async()=>namedData})});
+ const asked=[];h.ctx.QuranKnowledge={...K,tafsir:async(source,s,a)=>{asked.push([source,s,a]);return {name:source==='qurtubi'?'تفسير القرطبي':'التفسير الميسّر',by:'x',verses:[`${s}:${a}`],paragraphs:['معنى الآية هنا']};},searchHadith:async q=>({query:q,total:1,results:[{book:'صحيح البخاري',number:1,text:'إنما الأعمال بالنيات'}]})};
+ const spoken=assistantHarness(h,[]);
+ await h.ctx.TarteelAssistant.ask('تفسير القرطبي لسورة الكهف');assert.deepEqual(asked.at(-1),['qurtubi',18,1]);assert.match(spoken.at(-1).text,/تفسير القرطبي — سورة الكهف، الآية 1: معنى الآية هنا/);
+ await h.ctx.TarteelAssistant.ask('يعني ايه الاية دي');assert.equal(asked.at(-1)[0],'muyassar');
+ await h.ctx.TarteelAssistant.ask('ابحث عن كلمة الحمد');assert.match(spoken.at(-1).text,/«الحمد» جت في 114 آية/);
+ await h.ctx.TarteelAssistant.ask('حديث عن انما الاعمال بالنيات');assert.match(spoken.at(-1).text,/لقيت حديث واحد فيه «انما الاعمال بالنيات». من صحيح البخاري رقم 1: إنما الأعمال بالنيات/);
+});
+test('Quran search counts occurrences, matches phrases in order, and finds an ayah from a quote',()=>{
+ const S=require('./data/simple.json').data.surahs;
+ const jannah=K.searchQuran(S,'الجنة');assert.ok(jannah.occurrences>=jannah.total);
+ const phrase=K.searchQuran(S,'رب العالمين',{phrase:true});assert.ok(phrase.total>=40);assert.ok(phrase.results.some(r=>r.surah===1&&r.ayah===2));
+ assert.ok(K.searchQuran(S,'العالمين رب',{phrase:true}).total<phrase.total);
+ const water=K.findAyah(S,'وجعلنا من الماء كل شيء حي');assert.equal(water.exact,true);assert.deepEqual([water.results[0].surah,water.results[0].ayah],[21,30]);
+ // Half-remembered («يسري» for «يسرا»): the closest ayat, with how much of the quote they share.
+ const near=K.findAyah(S,'ان مع العسر يسري');assert.equal(near.exact,false);assert.equal(near.results[0].surah,94);assert.ok(near.results[0].match>=60);
+ assert.equal(K.findAyah(S,'زززز قققق').total,0);
+ assert.deepEqual(Object.keys(K.TAFSIRS),['muyassar','saadi','ibn_kathir','qurtubi','tabari','baghawi','wasit']);
+});
+// The assistant's "training set": how people actually ask, in Egyptian and standard Arabic, and what must come back.
+test('assistant understands tafsir and word-search phrasings, with follow-ups, on the real Mushaf',async()=>{
+ const real={'data/quran.json':require('./data/quran.json'),'data/simple.json':require('./data/simple.json')};
+ const h=await appHarness({fetch:async u=>({ok:true,json:async()=>real[u]})});
+ const asked=[];h.ctx.QuranKnowledge={...K,tafsir:async(src,s,a)=>{asked.push(`${src} ${s}:${a}`);return {name:K.TAFSIRS[src].name,by:'x',verses:[],paragraphs:src==='muyassar'?['المعنى']:['ف1','ف2','ف3']};}};
+ const spoken=assistantHarness(h,[]),say=async q=>{await h.ctx.TarteelAssistant.ask(q);return spoken.at(-1).text;};
+ const cases=[
+  ['فين الآية اللي بتقول وجعلنا من الماء كل شيء حي',/^دي سورة الانبياء، الآية 30\. قول «افتحها»/],
+  ['افتحها',/^فتحتلك سورة الانبياء، الآية 30\.$/],
+  ['فسرها',/^التفسير الميسّر — سورة الانبياء، الآية 30: المعنى$/,'muyassar 21:30'],
+  ['وعند ابن كثير؟',/^تفسير ابن كثير — سورة الانبياء، الآية 30: ف1 ف2 … قول «كمّل»/,'ibn_kathir 21:30'],
+  ['كمّل',/^ف3 وكده خلص التفسير\.$/],
+  ['طب السعدي',/^تفسير السعدي — سورة الانبياء، الآية 30/,'saadi 21:30'],
+  ['فسّر قوله تعالى إن مع العسر يسرا',/^دي سورة الشرح، الآية 5\. التفسير الميسّر/,'muyassar 94:5'],
+  ['ايه معنى كلمة الصمد',/^كلمة «الصمد» جت في سورة الاخلاص، الآية 2، ومعناها في سياق الآية/,'muyassar 112:2'],
+  // A word's meaning does not move the page: «الآية دي» is still the one on screen.
+  ['يعني ايه الآية دي',/سورة الانبياء، الآية 30/,'muyassar 21:30'],
+  ['تفسير الطبري لآية الكرسي',/^تفسير الطبري — سورة البقرة، الآية 255/,'tabari 2:255'],
+  ['سبب نزول الآية 5 من سورة المجادلة',/^تفسير ابن كثير — سورة المجادلة، الآية 5/,'ibn_kathir 58:5'],
+  ['كام مرة اتذكرت كلمة الجنة',/^«الجنة» اتذكرت \d+ مرة في \d+ آية\. أولهم: 1\) سورة البقرة 35/],
+  ['ابحث عن الرحمة في سورة الكهف',/^«الرحمة» جت في 5 آيات في سورة الكهف\. وهي: 1\) سورة الكهف 10/],
+  ['افتح النتيجة 2',/^فتحتلك سورة الكهف، الآية 58\.$/],
+  ['ابحث عن كلمة الكوثر',/^«الكوثر» جت في آية واحدة\. وهي: 1\) سورة الكوثر 1/],
+  ['دورلي على رب العالمين في القرآن',/^«رب العالمين» جت في \d+ آية/],
+  ['انهي سورة فيها قل اعوذ برب الفلق',/^دي سورة الفلق، الآية 1/],
+  ['«الله نور السماوات والارض»',/^دي سورة النور، الآية 35/],
+ ];
+ for(const [q,reply,tafsir] of cases){
+  const before=asked.length,text=await say(q);
+  assert.match(text,reply,`«${q}» → ${text}`);
+  if(tafsir)assert.equal(asked.slice(before).join(),tafsir,`«${q}» read the wrong tafsir`);
+ }
+ // «سمّعني» (play it for me) is not a request for «معنى».
+ let played=0;h.el('listen').click=()=>{played++;};await say('سمعني الآية');assert.equal(played,1);
+});
