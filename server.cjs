@@ -40,8 +40,9 @@ function cacheControl(rel) {
 function send(req, res, status, headers, body) {
   res.writeHead(status, {...security, ...headers});
   res.end(req.method === 'HEAD' ? undefined : body);
-  // Errors are always logged; set LOG=1 to log every request.
-  if (status >= 400 || process.env.LOG) console.log(`${new Date().toISOString().slice(11, 19)} ${status} ${req.method} ${req.url}`);
+  // Errors are always logged; set LOG=1 to log every request. Privacy: only the time, status, method and path
+  // (no query string, IP address, headers or body), printed to the console and never written to a file.
+  if (status >= 400 || process.env.LOG) console.log(`${new Date().toISOString().slice(11, 19)} ${status} ${req.method} ${String(req.url).split('?')[0]}`);
 }
 function handle(req, res) {
   let pathname;
