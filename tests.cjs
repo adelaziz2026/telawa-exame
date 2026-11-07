@@ -511,3 +511,10 @@ test('assistant understands tafsir and word-search phrasings, with follow-ups, o
  // «سمّعني» (play it for me) is not a request for «معنى».
  let played=0;h.el('listen').click=()=>{played++;};await say('سمعني الآية');assert.equal(played,1);
 });
+test('privacy: the server log keeps no query strings, and the page explains what stays on the device',()=>withServer(async request=>{
+ const real=console.log,lines=[];console.log=(...a)=>lines.push(a.join(' '));
+ try{await request('/missing-page?name=Ahmed&room=abc');}finally{console.log=real;}
+ assert.ok(lines.some(l=>/404 GET \/missing-page$/.test(l)),lines.join('\n'));assert.ok(!lines.some(l=>/Ahmed|room=/.test(l)));
+ const html=fs.readFileSync(require.resolve('./index.html'),'utf8');
+ assert.match(html,/id="privacy"/);assert.match(html,/يُرسل الصوت لـ Google\/Microsoft/);
+}));

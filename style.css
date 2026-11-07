@@ -465,3 +465,9 @@ html{-webkit-tap-highlight-color:transparent}
 .tafsir-source{margin:8px 16px 12px;font-size:11px}
 .tafsir-jump{display:block;margin:10px auto 0;padding:7px 16px;border-radius:20px;background:var(--gold-soft);color:var(--gold-ink);font-size:13px;font-weight:600;border:1px solid var(--notes-line)}
 .tafsir-jump:hover{background:var(--soft-hover)}
+
+/* Privacy notice in the progress panel */
+.privacy{margin:12px 0 4px;font-size:13px;color:var(--muted)}
+.privacy summary{cursor:pointer;font-weight:600;color:var(--accent);list-style-position:inside}
+.privacy ul{margin:8px 0 0;padding-inline-start:20px;line-height:1.8}
+.privacy strong{color:var(--ink)}
