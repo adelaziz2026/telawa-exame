@@ -590,3 +590,35 @@ test('the letters a reader confuses are counted on the device, shown with a tip,
  assert.match(spoken.at(-1).text,/بتقرا «س» بدل «ص» \(2 مرات\).*نصيحة: الصاد مفخّمة/);
  assert.equal(h.ctx.TarteelAssistant.tools.get_progress().weak_letters[0].instead_of,'ص');
 });
+// ---------- Tajweed and Quran sciences ----------
+test('tajweed rules are found from the Uthmani text (Hafs)',()=>{
+ const Q=require('./data/quran.json').data.surahs,rules=(s,a)=>Object.fromEntries(K.tajweed(Q[s-1].ayahs[a-1].text).map(r=>[r.name,r.words]));
+ const falaq=rules(113,4);const bare=ws=>ws.map(w=>require('./compare.js').normalize(w));assert.deepEqual(bare(falaq['إخفاء حقيقي']),['ومن شر']);assert.ok(falaq['لام شمسية']);assert.ok(falaq['لام قمرية']);assert.ok(falaq['قلقلة كبرى']);assert.ok(falaq['غنة مشددة']);
+ const ikhlas=rules(112,4);assert.ok(ikhlas['إظهار شفوي']);assert.deepEqual(bare(ikhlas['إدغام بغير غنة']),['يكن له']);assert.ok(ikhlas['إظهار حلقي']);
+ assert.ok(rules(104,4)['إقلاب']);
+ const fatiha=rules(1,7);assert.ok(fatiha['مد لازم']);assert.ok(fatiha['مد عارض للسكون']);
+ assert.ok(rules(2,6)['مد واجب متصل']);assert.ok(rules(2,4)['مد جائز منفصل']);assert.ok(rules(2,4)['قلقلة صغرى']);
+ // Every ayah of the Mushaf is handled.
+ for(const c of Q)for(const a of c.ayahs)assert.ok(Array.isArray(K.tajweed(a.text)));
+});
+test('Quran sciences counts come from the Mushaf',()=>{
+ const f=K.quranFacts(require('./data/quran.json').data.surahs).counted_from_this_mushaf;
+ assert.deepEqual([f.surahs,f.ayat,f.meccan_surahs,f.medinan_surahs,f.juz,f.hizb,f.pages,f.sajdat_tilawa.length,f.longest_surah.number],[114,6236,86,28,30,60,604,15,2]);
+});
+test('assistant explains tajweed, finds it in an ayah, and answers Quran-sciences questions',async()=>{
+ const real={'data/quran.json':require('./data/quran.json'),'data/simple.json':require('./data/simple.json')};
+ const h=await appHarness({fetch:async u=>({ok:true,json:async()=>real[u]})});
+ h.ctx.QuranKnowledge=K;
+ const spoken=assistantHarness(h,[]),say=async q=>{await h.ctx.TarteelAssistant.ask(q);return spoken.at(-1).text;};
+ await say('افتح سورة الفلق آية 4');
+ assert.match(await say('احكام التجويد في الآية دي'),/^أحكام التجويد في سورة الفلق، الآية 4 \(رواية حفص\): إخفاء حقيقي في «/);
+ assert.match(await say('تجويد آية الكرسي'),/سورة البقرة، الآية 255.*مد جائز منفصل/);
+ assert.match(await say('يعني ايه الاقلاب'),/^إقلاب \(النون الساكنة والتنوين\): نون ساكنة أو تنوين وبعدها باء/);
+ const madd=await say('انواع المد');assert.match(madd,/مد واجب متصل/);assert.doesNotMatch(madd,/إخفاء/);
+ assert.match(await say('كام سورة في القران'),/114 سورة، منها 86 مكية و28 مدنية/);
+ assert.match(await say('سجدات التلاوة'),/^سجدات التلاوة 15:/);
+ assert.match(await say('اول ما نزل من القران'),/سورة العلق/);
+ // Earlier skills still work.
+ assert.match(await say('فين الآية اللي بتقول وجعلنا من الماء كل شيء حي'),/سورة الانبياء، الآية 30/);
+ const t=h.ctx.TarteelAssistant.tools;assert.equal(t.get_tajweed({surah:113,ayah:4}).riwaya,'حفص عن عاصم');assert.ok(t.explain_tajweed_rule({rule:'قلقلة'}).matched);
+});

@@ -382,6 +382,13 @@ async function showTafsir(){
  const s=Number($('surah').value),a=rangeNumbers()[0],token=++tafsirToken;
  for(const tab of $('tafsirBox').querySelectorAll?.('[data-src]')||[])tab.setAttribute('aria-selected',String(tab.dataset.src===tafsirSource));
  $('tafsirRef').textContent=`${surahs[s-1].name} • الآية ${a}`;$('tafsirMore').hidden=true;$('tafsirSource').textContent='';
+ // Tajweed tab: the rules in this ayah, found on the device from the Uthmani text (no internet needed).
+ if(tafsirSource==='tajweed'&&QuranKnowledge.tajweed){
+  const rules=QuranKnowledge.tajweed(surahs[s-1].ayahs[a-1].text);
+  $('tafsirBody').replaceChildren(...(rules.length?rules.map(r=>{const d=make('div','tajweed-rule');const top=make('p','');top.append(make('strong','',r.name),make('span','tajweed-words',' — '+r.words.join('، ')));d.append(top,make('p','tajweed-how',r.how));return d;}):[make('p','tafsir-loading','لا توجد أحكام نون أو ميم أو مدود أو قلقلة ظاهرة في هذه الآية.')]));
+  $('tafsirSource').textContent='أحكام التجويد لرواية حفص عن عاصم، مستخرجة آليًا من رسم المصحف. للتعلم المتقن راجع معلّمًا.';
+  return;
+ }
  $('tafsirBody').replaceChildren(make('p','tafsir-loading','جارٍ تحميل التفسير…'));
  try{
   const t=await QuranKnowledge.tafsir(tafsirSource,s,a);if(token!==tafsirToken)return;

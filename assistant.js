@@ -71,6 +71,19 @@ const tools={
  },
  get_surah_info({surah}){if(loading)throw Error('The Mushaf is still loading.');return QuranKnowledge.surahInfo(surahs,surah);},
  search_hadith({query,book}){return QuranKnowledge.searchHadith(query,{books:!book||book==='all'?undefined:[book],onLoading:name=>chip(`تحميل ${name} لأول مرة… قد يستغرق لحظات`)});},
+ // Tajweed rules in an ayah (Hafs), found from the Uthmani text on the device.
+ get_tajweed({surah,ayah}){
+  checkAyah(surah,ayah);
+  return {surah,surah_name:surahName(surah),ayah,riwaya:'حفص عن عاصم',rules:QuranKnowledge.tajweed(surahs[surah-1].ayahs[ayah-1].text).map(r=>({rule:r.name,group:r.group,words:r.words,how_to_read:r.how}))};
+ },
+ explain_tajweed_rule({rule}){
+  // Word by word, without «ال» and words like «أنواع/أحكام»: «انواع المد» → every madd, «النون الساكنة» → its four rules.
+  const words=w=>norm(w).split(' ').map(x=>x.replace(/^و?ال(?=..)/,'')).filter(x=>x.length>1&&!/^(انواع|نوع|احكام|حكم|اشرح|اشرحلي|يعني|ايه|ما|هو|هي|معني)$/.test(x));
+  const k=words(rule),all=Object.values(QuranKnowledge.TAJWEED_RULES);
+  const hits=k.length?all.filter(r=>{const own=words(r.name+' '+r.group);return k.every(x=>own.some(o=>o===x||o.startsWith(x)));}):[];
+  return {rules:(hits.length?hits:all).map(r=>({rule:r.name,group:r.group,how_to_read:r.how})),matched:hits.length>0};
+ },
+ get_quran_facts(){if(loading)throw Error('The Mushaf is still loading.');return QuranKnowledge.quranFacts(surahs);},
  get_progress(){
   const keys=Object.keys(scores),values=Object.values(scores),now=Date.now();
   const weakest=keys.map(key=>{const [s,a]=key.split(':').map(Number),words=simple[s-1]?.ayahs[a-1]?.text.split(/\s+/).length||1,p=QuranLearning.recall(brain,key,now,words);return {surah:s,ayah:a,name:surahName(s),last_score:scores[key],predicted_recall:Math.round((p??scores[key]/100)*100)};})
@@ -79,7 +92,7 @@ const tools={
  },
 };
 // A short Arabic label shown in the chat for each action.
-const actionLabel={get_tafsir:'قراءة التفسير',search_quran:'البحث في المصحف',find_ayah:'البحث عن الآية',get_surah_info:'معلومات السورة',search_hadith:'البحث في كتب السنة',get_app_state:'قراءة حالة التطبيق',go_to_ayah:'فتح الآية',get_ayah_text:'قراءة نص الآية من المصحف',play_recitation:'تشغيل التلاوة',set_ayah_hidden:'إخفاء/إظهار الآية',get_progress:'قراءة تقدمك'};
+const actionLabel={get_tajweed:'أحكام التجويد',explain_tajweed_rule:'شرح حكم التجويد',get_quran_facts:'علوم القرآن',get_tafsir:'قراءة التفسير',search_quran:'البحث في المصحف',find_ayah:'البحث عن الآية',get_surah_info:'معلومات السورة',search_hadith:'البحث في كتب السنة',get_app_state:'قراءة حالة التطبيق',go_to_ayah:'فتح الآية',get_ayah_text:'قراءة نص الآية من المصحف',play_recitation:'تشغيل التلاوة',set_ayah_hidden:'إخفاء/إظهار الآية',get_progress:'قراءة تقدمك'};
 
 // ---------- Chat log ----------
 function bubble(role,text){
@@ -223,6 +236,36 @@ async function knowledgeTurn(t,raw=t){
  if(lastResults?.length){
   const n=+(t.match(/نتيجه(?: رقم)? (\d+)/)?.[1]||0)||(/(?:افتح|وديني|روح)/.test(t)&&ORDINALS[t.split(' ').find(w=>ORDINALS[w])])||(/^(?:افتحها|افتحهالي|افتحهولي|وديني عليها|روحلها)$/.test(t)?1:0);
   if(n){const r=lastResults[n-1];if(!r)return `عندي ${lastResults.length} نتايج بس.`;const out=act('go_to_ayah',{surah:r.surah,ayah:r.ayah,to_ayah:null});return `فتحتلك ${out.opened}.`;}
+ }
+ // Tajweed: a rule explained («يعني ايه الإخفاء؟»، «اشرحلي القلقلة»، «احكام النون الساكنة»).
+ const RULE_WORDS=/(اخفاء|ادغام|اقلاب|اظهار|قلقله|غنه|مد (?:متصل|منفصل|لازم|عارض|واجب|جائز)|المدود|انواع المد|لام شمسيه|لام قمريه|اللام الشمسيه|اللام القمريه|النون الساكنه|التنوين|الميم الساكنه)/;
+ if(RULE_WORDS.test(t)&&!/(الايه|ايه \d|سوره)/.test(t.replace(/^(?:يعني )?ايه /,''))){
+  const r=tools.explain_tajweed_rule({rule:t.match(RULE_WORDS)[1].replace(/^ال(?=نون|ميم|مد|لام)/,'')});chip(actionLabel.explain_tajweed_rule);
+  return r.rules.slice(0,5).map(x=>`**${x.rule}** (${x.group}): ${x.how_to_read}`).join(' ');
+ }
+ // Tajweed of an ayah («احكام التجويد في الآية دي»، «تجويد آية الكرسي»): shown in the chat and in the panel's tab.
+ if(/(تجويد|احكام التلاوه|احكام الايه|احكام القراءه)/.test(t)){
+  const {surah,ayah}=where(),r=tools.get_tajweed({surah,ayah});chip(actionLabel.get_tajweed);
+  if(Number($('surah').value)===surah&&rangeNumbers()[0]===ayah){const box=$('tafsirBox');if(box){box.open=true;box.querySelector?.('[data-src="tajweed"]')?.click();}}
+  if(!r.rules.length)return `مفيش أحكام نون أو ميم أو مدود أو قلقلة ظاهرة في ${nameOf(surah)}، الآية ${ayah}.`;
+  return `أحكام التجويد في ${nameOf(surah)}، الآية ${ayah} (رواية حفص): `+r.rules.map(x=>`**${x.rule}** في «${x.words.slice(0,3).join('، ')}»`).join('، ')+'. اسألني «يعني ايه الإخفاء» مثلًا عشان أشرحلك أي حكم.';
+ }
+ // Quran sciences: counts from this Mushaf, and a few well-established facts.
+ const FACTS=[
+  [/(كام سوره|عدد السور)/,f=>`القرآن ${f.surahs} سورة، منها ${f.meccan_surahs} مكية و${f.medinan_surahs} مدنية.`],
+  [/(مكيه|مدنيه)/,f=>`السور المكية ${f.meccan_surahs} والمدنية ${f.medinan_surahs}، حسب تصنيف المصحف ده.`],
+  [/(كام ايه|عدد الايات|عدد اياته)/,f=>`القرآن ${f.ayat} آية بـ${f.ayah_count_method}.`],
+  [/(كام كلمه|عدد الكلمات|عدد كلمات)/,f=>`حوالي ${f.words.toLocaleString('ar-EG')} كلمة في المصحف ده (العدد بيختلف شوية حسب طريقة العد).`],
+  [/(كام جزء|عدد الاجزاء|كام حزب|عدد الاحزاب|كام صفحه|عدد الصفحات)/,f=>`القرآن ${f.juz} جزء، و${f.hizb} حزب (${f.hizb_quarters} ربع)، و${f.pages} صفحة في مصحف المدينة، و${f.manzil} منازل.`],
+  [/(سجد)/,f=>`سجدات التلاوة ${f.sajdat_tilawa.length}: `+f.sajdat_tilawa.map(x=>`${QuranCompare.normalize(x.name)} ${x.ayah}`).join('، ')+'.'],
+  [/(اطول سوره)/,f=>`أطول سورة ${QuranCompare.normalize(f.longest_surah.name)}: ${f.longest_surah.ayat} آية.`],
+  [/(اقصر سوره)/,f=>`أقصر السور ${f.shortest_surahs.map(x=>QuranCompare.normalize(x.name)).join(' و')}: ${f.shortest_surahs[0].ayat} آيات لكل واحدة.`],
+ ];
+ const CLASSICAL=[[/(اول ما نزل|اول ايه نزلت|اول سوره نزلت)/,0],[/(اخر ما نزل|اخر ايه نزلت)/,1],[/(بدون بسمله|من غير بسمله|مفيهاش بسمله|البسمله)/,2],[/(جمع القران|مين جمع|كتابه المصحف)/,3],[/(القراءات|القراء العشره|روايه حفص)/,4],[/(نزل القران في|مده نزول|نزل منجم)/,5],[/(الحروف المقطعه)/,6]];
+ const fact=FACTS.find(([re])=>re.test(t)),old=CLASSICAL.find(([re])=>re.test(t));
+ if((fact||old)&&!findSurahIn(t)){
+  const all=tools.get_quran_facts();chip(actionLabel.get_quran_facts);
+  return fact?fact[1](all.counted_from_this_mushaf):all.classical[old[1]];
  }
  // «معني» only as a whole word: it is also inside «سمعني» (play it for me).
  const wantsTafsir=/(تفسير|فسر|(?:^| )معني(?: |$)|يعني ايه|شرح|سبب نزول|سبب النزول)/.test(t);

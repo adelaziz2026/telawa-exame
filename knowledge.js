@@ -152,6 +152,122 @@ async function searchHadith(query,{books=['nawawi','bukhari','muslim'],limit=8,o
  }
  return {query,total,results};
 }
-const api={TAFSIRS,HADITH,tafsir,paragraphs,plain,searchQuran,findAyah,surahInfo,searchHadith};
+// ---- Tajweed: the rules in an ayah (riwayat Hafs), read from the Uthmani text's letters and marks ----
+// Marks are built from code points so the source stays readable (they are invisible combining characters).
+const mk=n=>String.fromCharCode(n);
+const FATHA=mk(0x64e),DAMMA=mk(0x64f),KASRA=mk(0x650),SHADDA=mk(0x651),SUKUN=mk(0x652),TANWEEN=[mk(0x64b),mk(0x64c),mk(0x64d)],MADDA=mk(0x653),DAGGER=mk(0x670),SILENT=mk(0x6df);
+const VOWELS=[FATHA,DAMMA,KASRA,...TANWEEN];
+const isMark=c=>{const n=c.codePointAt(0);return (n>=0x610&&n<=0x61a)||(n>=0x64b&&n<=0x65f)||n===0x670||(n>=0x6d6&&n<=0x6ed);};
+const HAMZA='ءأإؤئآ',THROAT=HAMZA+'هعحغخ',IKHFA='تثجدذزسشصضطظفقك',QALQALA='قطبجد';
+const TAJWEED_RULES={
+ izhar:{name:'إظهار حلقي',group:'النون الساكنة والتنوين',how:'نون ساكنة أو تنوين قبل حرف حلقي (ء هـ ع ح غ خ): تُنطق النون واضحة من مخرجها بلا غنة زائدة.'},
+ idgham_ghunna:{name:'إدغام بغنة',group:'النون الساكنة والتنوين',how:'نون ساكنة أو تنوين في آخر كلمة وبعدها (ي ن م و) في أول التالية: تُدغم النون في الحرف التالي مع غنة بمقدار حركتين.'},
+ idgham_no_ghunna:{name:'إدغام بغير غنة',group:'النون الساكنة والتنوين',how:'نون ساكنة أو تنوين وبعدها (ل) أو (ر): تُدغم النون إدغامًا كاملًا بلا غنة.'},
+ iqlab:{name:'إقلاب',group:'النون الساكنة والتنوين',how:'نون ساكنة أو تنوين وبعدها باء: تُقلب النون ميمًا مخفاة مع غنة بمقدار حركتين، والشفتان منطبقتان انطباقًا خفيفًا.'},
+ ikhfa:{name:'إخفاء حقيقي',group:'النون الساكنة والتنوين',how:'نون ساكنة أو تنوين قبل أحد الحروف الخمسة عشر (ت ث ج د ذ ز س ش ص ض ط ظ ف ق ك): تُنطق النون بين الإظهار والإدغام مع غنة بمقدار حركتين.'},
+ idgham_shafawi:{name:'إدغام شفوي',group:'الميم الساكنة',how:'ميم ساكنة بعدها ميم: تُدغم الأولى في الثانية مع غنة بمقدار حركتين.'},
+ ikhfa_shafawi:{name:'إخفاء شفوي',group:'الميم الساكنة',how:'ميم ساكنة بعدها باء: تُخفى الميم عند الباء مع غنة بمقدار حركتين.'},
+ izhar_shafawi:{name:'إظهار شفوي',group:'الميم الساكنة',how:'ميم ساكنة قبل غير الميم والباء: تُظهر الميم بلا غنة، ويُحذر من إخفائها خاصة عند الواو والفاء.'},
+ ghunna:{name:'غنة مشددة',group:'النون والميم المشددتان',how:'نون أو ميم مشددة: غنة كاملة بمقدار حركتين.'},
+ qalqala_sughra:{name:'قلقلة صغرى',group:'القلقلة',how:'حرف من (قطب جد) ساكن في وسط الكلام: يُنطق مع نبرة (اهتزاز) خفيفة حتى لا يختفي صوته.'},
+ qalqala_kubra:{name:'قلقلة كبرى',group:'القلقلة',how:'الوقف على حرف من (قطب جد) في آخر الآية: قلقلة أوضح، ويزيد وضوحها إن كان مشددًا.'},
+ lam_shamsiyya:{name:'لام شمسية',group:'لام التعريف',how:'لام «ال» قبل حرف شمسي (مشدد بعدها): تُدغم اللام فلا تُنطق.'},
+ lam_qamariyya:{name:'لام قمرية',group:'لام التعريف',how:'لام «ال» قبل حرف قمري: تُظهر اللام ساكنة.'},
+ madd_muttasil:{name:'مد واجب متصل',group:'المدود',how:'حرف مد بعده همزة في نفس الكلمة: يُمد 4 أو 5 حركات.'},
+ madd_munfasil:{name:'مد جائز منفصل',group:'المدود',how:'حرف مد في آخر كلمة وهمزة في أول التالية: يُمد 4 أو 5 حركات لحفص من طريق الشاطبية.'},
+ madd_lazim:{name:'مد لازم',group:'المدود',how:'حرف مد بعده سكون أصلي أو حرف مشدد: يُمد 6 حركات لزومًا.'},
+ madd_arid:{name:'مد عارض للسكون',group:'المدود',how:'الوقف على آخر الآية وقبل الحرف الأخير حرف مد: يجوز 2 أو 4 أو 6 حركات.'},
+};
+function lettersOf(text){
+ const out=[];let word=0,started=false;
+ // Not NFC: it would merge alif and madda into «آ» and hide the madd mark.
+ for(const c of text){
+  if(c===' '){if(started)word++;started=false;continue;}
+  if(isMark(c)){if(out.length)out[out.length-1].marks+=c;continue;}
+  if(c==='ـ')continue;
+  out.push(c==='آ'?{c:'ا',marks:MADDA,word}:{c,marks:'',word});started=true;
+ }
+ return out;
+}
+const has=(l,m)=>l.marks.includes(m);
+const vowelled=l=>VOWELS.some(v=>has(l,v))||has(l,SHADDA);
+// A letter with neither a vowel nor shadda is quiescent (the Mushaf leaves the sukun off before ikhfa and idgham).
+const sakin=l=>has(l,SUKUN)||(!vowelled(l)&&!has(l,DAGGER)&&!has(l,SILENT));
+// The next letter that is pronounced: silent letters (marked ۟, the alif or ya carrying a tanween, hamzat al-wasl) are skipped.
+function nextSounded(L,i){
+ for(let j=i+1;j<L.length;j++){
+  const x=L[j];
+  if(has(x,SILENT)||x.c==='ٱ')continue;
+  if((x.c==='ا'||x.c==='ى')&&!x.marks&&TANWEEN.some(t=>has(L[j-1],t)))continue;
+  return j;
+ }
+ return -1;
+}
+function tajweed(text){
+ const L=lettersOf(text),words=text.split(/\s+/).filter(w=>[...w].some(c=>!isMark(c))),found=[];
+ const add=(rule,i,j=i)=>found.push({rule,word:[...new Set([L[i].word,L[j].word])].map(w=>words[w]).join(' ')});
+ for(let i=0;i<L.length;i++){
+  const l=L[i],j=nextSounded(L,i),n=j>=0?L[j]:null,last=j<0;
+  // Noon sakinah and tanween.
+  if((l.c==='ن'&&sakin(l)&&!last)||TANWEEN.some(t=>has(l,t))&&!last){
+   if(THROAT.includes(n.c))add('izhar',i,j);
+   else if(n.c==='ب')add('iqlab',i,j);
+   else if('ينمو'.includes(n.c)){if(n.word!==l.word)add('idgham_ghunna',i,j);}
+   else if('لر'.includes(n.c))add('idgham_no_ghunna',i,j);
+   else if(IKHFA.includes(n.c))add('ikhfa',i,j);
+  }
+  // Meem sakinah.
+  if(l.c==='م'&&sakin(l)&&!last){add(n.c==='م'?'idgham_shafawi':n.c==='ب'?'ikhfa_shafawi':'izhar_shafawi',i,j);}
+  // Mushaddad noon and meem.
+  if((l.c==='ن'||l.c==='م')&&has(l,SHADDA))add('ghunna',i);
+  // Qalqalah: sakin in the middle, or the last letter where the reader stops.
+  if(QALQALA.includes(l.c)){if(last)add('qalqala_kubra',i);else if(has(l,SUKUN))add('qalqala_sughra',i);}
+  // Lam of «ال»: written sukun = qamariyya; no mark and the next letter doubled = shamsiyya.
+  if(l.c==='ل'&&i>0&&(L[i-1].c==='ٱ'||L[i-1].c==='ا')&&L[i-1].word===l.word&&(i<2||L[i-2].word!==l.word||'وفبكل'.includes(L[i-2].c))){
+   if(has(l,SUKUN))add('lam_qamariyya',i);else if(n&&!vowelled(l)&&has(n,SHADDA)&&n.word===l.word)add('lam_shamsiyya',i);
+   // «ٱلَّذِينَ، ٱلَّيْلِ»: the lam of «ال» is not written, the doubled lam after hamzat al-wasl shows it.
+   else if(L[i-1].c==='ٱ'&&has(l,SHADDA))add('lam_shamsiyya',i);
+  }
+  // «لِلْمُتَّقِينَ»: after «لِ» the alif of «ال» is dropped; a lam with sukun right after it is still qamariyya.
+  if(l.c==='ل'&&has(l,SUKUN)&&i>0&&L[i-1].c==='ل'&&L[i-1].word===l.word&&(i<2||L[i-2].word!==l.word))add('lam_qamariyya',i);
+  // Madd marked with ٓ: what follows decides its kind.
+  if(has(l,MADDA)&&n){
+   if(HAMZA.includes(n.c))add(n.word===l.word?'madd_muttasil':'madd_munfasil',i,j);
+   else if(has(n,SHADDA)||has(n,SUKUN))add('madd_lazim',i,j);
+  }
+ }
+ // Stopping at the end of the ayah after a long vowel.
+ const e=L.length-1,p=L[e-1];
+ if(p&&(p.c==='ا'&&!vowelled(p)||p.c==='و'&&!vowelled(p)&&has(L[e-2]||p,DAMMA)||p.c==='ي'&&!vowelled(p)&&has(L[e-2]||p,KASRA)||has(p,DAGGER)))add('madd_arid',e);
+ // One entry per rule, with the words where it occurs.
+ const byRule=new Map();
+ for(const f of found){const r=byRule.get(f.rule)||byRule.set(f.rule,{rule:f.rule,...TAJWEED_RULES[f.rule],words:[]}).get(f.rule);if(!r.words.includes(f.word))r.words.push(f.word);}
+ return [...byRule.values()];
+}
+// ---- Quran sciences: facts counted from the local Mushaf (exact), plus a few well-established classical facts ----
+function quranFacts(chapters){
+ const all=chapters.flatMap(c=>c.ayahs.map(a=>({c,a}))),byAyat=[...chapters].sort((x,y)=>y.ayahs.length-x.ayahs.length);
+ const max=k=>Math.max(...all.map(x=>x.a[k]||0));
+ return {
+  counted_from_this_mushaf:{
+   surahs:chapters.length,ayat:all.length,words:all.reduce((n,x)=>n+plain(x.a.text).split(' ').length,0),
+   meccan_surahs:chapters.filter(c=>c.revelationType==='Meccan').length,medinan_surahs:chapters.filter(c=>c.revelationType==='Medinan').length,
+   juz:max('juz'),hizb:Math.round(max('hizbQuarter')/4),hizb_quarters:max('hizbQuarter'),manzil:max('manzil'),pages:max('page'),ruku:max('ruku'),
+   longest_surah:{number:byAyat[0].number,name:byAyat[0].name,ayat:byAyat[0].ayahs.length},shortest_surahs:byAyat.filter(c=>c.ayahs.length===byAyat.at(-1).ayahs.length).map(c=>({number:c.number,name:c.name,ayat:c.ayahs.length})),
+   sajdat_tilawa:all.filter(x=>x.a.sajda).map(x=>({surah:x.c.number,name:x.c.name,ayah:x.a.numberInSurah})),
+   ayah_count_method:'العدّ الكوفي (رواية حفص عن عاصم)',
+  },
+  classical:[
+   'أول ما نزل من القرآن: أول خمس آيات من سورة العلق «اقرأ باسم ربك الذي خلق…» (في صحيح البخاري من حديث عائشة).',
+   'آخر ما نزل على المشهور: قوله تعالى «واتقوا يومًا ترجعون فيه إلى الله» (البقرة 281)، وفيه أقوال أخرى.',
+   'سورة التوبة وحدها لا تبدأ بالبسملة، والبسملة آية من سورة النمل (30) أيضًا.',
+   'جُمع القرآن في عهد أبي بكر الصديق في صحف، ثم نسخه عثمان بن عفان في المصاحف ووزعها على الأمصار.',
+   'القراءات العشر المتواترة: نافع، ابن كثير، أبو عمرو، ابن عامر، عاصم، حمزة، الكسائي، أبو جعفر، يعقوب، خلف العاشر. والمصحف في التطبيق برواية حفص عن عاصم.',
+   'نزل القرآن منجّمًا (مفرّقًا) في نحو ثلاث وعشرين سنة: نحو ثلاث عشرة سنة بمكة وعشر بالمدينة.',
+   'الحروف المقطعة افتُتحت بها 29 سورة، مثل «الم» و«حم» و«ق».',
+  ],
+ };
+}
+const api={TAJWEED_RULES,tajweed,quranFacts,TAFSIRS,HADITH,tafsir,paragraphs,plain,searchQuran,findAyah,surahInfo,searchHadith};
 if(typeof module!=='undefined')module.exports=api;else scope.QuranKnowledge=api;
 })(globalThis);

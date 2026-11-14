@@ -525,3 +525,10 @@ body.mushaf-active{overflow:hidden}
 .letter-list li{background:var(--soft);border-radius:12px;padding:10px 12px;font-size:14px}
 .letter-list strong{color:var(--ink)}
 .letter-tip{display:block;margin-top:6px;color:var(--muted);line-height:1.7;font-size:12.5px}
+
+/* Tajweed tab */
+.tajweed-rule{border-inline-start:3px solid var(--gold);padding:6px 12px;margin:0 0 10px;background:var(--soft);border-radius:10px}
+.tajweed-rule p{margin:2px 0}
+.tajweed-rule strong{color:var(--accent)}
+.tajweed-words{font-family:inherit;color:var(--ink)}
+.tajweed-how{color:var(--muted);font-size:13px;line-height:1.7}
