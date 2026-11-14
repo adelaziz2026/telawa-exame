@@ -72,7 +72,7 @@ test('navigation continues across surah boundaries',async()=>{
 });
 test('review reports a word accuracy score',async()=>{
  const h=await appHarness();h.el('transcript').value='الحمد';h.el('review').onclick();
- assert.equal(h.el('resultLabel').textContent,'1 مواضع للمراجعة · 50٪');assert.match(h.el('verseRef').textContent,/آخر مراجعة 50٪/);
+ assert.equal(h.el('resultLabel').textContent,'موضع واحد للمراجعة · 50٪');assert.match(h.el('verseRef').textContent,/آخر مراجعة 50٪/);
 });
 test('PWA manifest and offline cache list point to real files',()=>{
  const manifest=JSON.parse(fs.readFileSync('./manifest.webmanifest','utf8'));
@@ -204,7 +204,7 @@ test('a range of ayat is shown, reviewed as one passage, and scored per ayah',as
  const h=await appHarness({fetch:async()=>({ok:true,json:async()=>rangeData})});
  h.el('ayahEnd').value='3';h.el('ayahEnd').onchange();assert.match(h.el('verse').textContent,/﴿٢﴾/);assert.match(h.el('verse').textContent,/الرحمن الرحيم ﴿٣﴾/);
  h.el('transcript').value='الحمد لله رب الرحمن الرحيم';h.el('review').onclick();
- assert.equal(h.el('resultLabel').textContent,'1 مواضع للمراجعة · 83٪');
+ assert.equal(h.el('resultLabel').textContent,'موضع واحد للمراجعة · 83٪');
  assert.deepEqual(JSON.parse(vm.runInNewContext('JSON.stringify(scores)',h.ctx)),{'1:1':100,'1:2':50,'1:3':100});
  assert.equal(h.el('result').children.filter(c=>c.className==='ayah-sep').length,3);
  assert.equal(String(h.el('statAyat').textContent),'3');
@@ -518,3 +518,26 @@ test('privacy: the server log keeps no query strings, and the page explains what
  const html=fs.readFileSync(require.resolve('./index.html'),'utf8');
  assert.match(html,/id="privacy"/);assert.match(html,/يُرسل الصوت لـ Google\/Microsoft/);
 }));
+test('a correct recitation is not marked wrong: waqf marks, punctuation and same-sounding spellings',()=>{
+ const C=require('./compare.js'),ok=(e,s)=>C.compare(e,s).every(i=>i.type==='correct');
+ // The simple Mushaf text has waqf marks as separate tokens.
+ assert.ok(ok('ذَٰلِكَ الْكِتَابُ لَا رَيْبَ ۛ فِيهِ ۛ هُدًى لِّلْمُتَّقِينَ','ذلك الكتاب لا ريب فيه هدى للمتقين'));
+ assert.ok(ok('الحمد لله رب العالمين','الحمد، لله رب العالمين.'));
+ for(const [e,s] of [['الصلاة','الصلاه'],['يؤمنون','يءمنون'],['الرحمن','الرحمان'],['ذلك','ذالك'],['هذا','هاذا'],['لكن','لاكن'],['أولئك','اولائك'],['السماوات','السموات'],['على','علي']])assert.ok(ok(e,s),`${e} / ${s}`);
+ // Real slips still count.
+ for(const [e,s] of [['قالوا','قال'],['قل','قال'],['العالمين','العالمون']])assert.equal(C.compare(e,s)[0].type,'changed',`${e} / ${s}`);
+});
+test('the basmala and isti\'adha recited before ayah 1 are not extra words',async()=>{
+ const data={data:{surahs:Array.from({length:114},(_,i)=>({number:i+1,name:'سورة',ayahs:[{number:1,numberInSurah:1,text:(i===0?'':'بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ ')+'قُلْ هُوَ ٱللَّهُ أَحَدٌ'}]}))}};
+ const h=await appHarness({fetch:async()=>({ok:true,json:async()=>structuredClone(data)})});h.el('surah').value='112';h.el('surah').onchange();
+ h.el('transcript').value='أعوذ بالله من الشيطان الرجيم بسم الله الرحمن الرحيم قل هو الله أحد';h.el('review').onclick?.()??h.ctx.review();
+ assert.equal(h.el('resultLabel').textContent,'الكلمات متطابقة');
+});
+test('words that speech recognition runs together still match both words of the ayah',()=>{
+ const C=require('./compare.js');
+ const r=C.compare('يا أيها الذين آمنوا','ياأيها الذين امنوا');assert.deepEqual(r.map(i=>i.type),['correct','correct','correct','correct']);
+ assert.ok(C.compare('يا قوم اعبدوا الله','ياقوم اعبدوا الله').every(i=>i.type==='correct'));
+ assert.equal(C.compare('مائة عام','مئة عام')[0].type,'correct');
+ // Leaving out «يا» is still a mistake.
+ assert.deepEqual(C.compare('يا قوم','قوم').map(i=>i.type),['missing','correct']);
+});

@@ -110,7 +110,7 @@ function changeSurah(){fillAyahs();render();}
 function goTo(surah,ayah){$('surah').value=surah;fillAyahs();$('ayah').value=ayah;fillEnd();render();}
 // Moving past either end of a surah continues into the neighbouring surah.
 function step(delta){if(loading)return;let s=Number($('surah').value),a=Number($('ayah').value)+delta;if(a<1){if(s===1)return;s--;a=surahs[s-1].ayahs.length;}else if(a>surahs[s-1].ayahs.length){if(s===114)return;s++;a=1;}goTo(s,a);}
-async function init(){try{const responses=await Promise.all(['data/quran.json','data/simple.json'].map(x=>fetch(x)));if(responses.some(r=>!r.ok))throw Error();const [q,s]=await Promise.all(responses.map(r=>r.json()));surahs=q.data.surahs;simple=s.data.surahs;if(surahs.length!==114||simple.length!==114)throw Error();separateBasmala(surahs);separateBasmala(simple);$('surah').replaceChildren(...surahs.map(s=>new Option(`${s.number}. ${s.name}`,s.number)));$('surah').disabled=$('ayah').disabled=false;loading=false;$('versePanel').classList.remove('loading','failed');globalThis.performance?.mark?.('tarteel-ready');fillSearch();const pos=load('position',null);$('hide').checked=load('hide',false)===true;if(pos&&surahs[pos.surah-1]?.ayahs[pos.ayah-1])goTo(pos.surah,pos.ayah);else changeSurah();$('engine').value=load('engine',globalThis.DeviceASR?.supported()||!SpeechRecognition?'device':'browser');updateEngine();updatePanel();}catch{$('versePanel').classList.remove('loading');$('versePanel').classList.add('failed');$('retry').hidden=false;$('verse').textContent='تعذّر تحميل المصحف. تحقق من الاتصال ثم أعد المحاولة.';$('status').textContent='النص القرآني غير متاح.';}}
+async function init(){try{const responses=await Promise.all(['data/quran.json','data/simple.json'].map(x=>fetch(x)));if(responses.some(r=>!r.ok))throw Error();const [q,s]=await Promise.all(responses.map(r=>r.json()));surahs=q.data.surahs;simple=s.data.surahs;if(surahs.length!==114||simple.length!==114)throw Error();separateBasmala(surahs);separateBasmala(simple);for(const c of simple)for(const y of c.ayahs)y.text=y.text.split(/\s+/).filter(w=>QuranCompare.normalize(w)).join(' ');$('surah').replaceChildren(...surahs.map(s=>new Option(`${s.number}. ${s.name}`,s.number)));$('surah').disabled=$('ayah').disabled=false;loading=false;$('versePanel').classList.remove('loading','failed');globalThis.performance?.mark?.('tarteel-ready');fillSearch();const pos=load('position',null);$('hide').checked=load('hide',false)===true;if(pos&&surahs[pos.surah-1]?.ayahs[pos.ayah-1])goTo(pos.surah,pos.ayah);else changeSurah();$('engine').value=load('engine',globalThis.DeviceASR?.supported()||!SpeechRecognition?'device':'browser');updateEngine();updatePanel();}catch{$('versePanel').classList.remove('loading');$('versePanel').classList.add('failed');$('retry').hidden=false;$('verse').textContent='تعذّر تحميل المصحف. تحقق من الاتصال ثم أعد المحاولة.';$('status').textContent='النص القرآني غير متاح.';}}
 $('surah').onchange=changeSurah;$('ayah').onchange=()=>{fillEnd();render();};$('ayahEnd').onchange=render;$('hide').onchange=()=>{save('hide',$('hide').checked);hintLevel=0;if(!loading)showVerse();};
 $('hint').onclick=()=>{hintLevel++;showVerse();};
 $('prev').onclick=()=>step(-1);$('next').onclick=()=>step(1);$('smart').onclick=smartPick;
@@ -158,11 +158,20 @@ $('listen').onclick=async()=>{
 };
 // Compares the recitation with the selected ayah or range. Each word is traced back to its ayah, so a range
 // gets per-ayah scores (for progress and the learning models) and the word-audio buttons point at the right ayah.
+// The isti'adha («أعوذ بالله من الشيطان الرجيم») and, before ayah 1, the basmala are recited but are not part of
+// the ayah: drop them from the start of what was heard so they do not count as extra words.
+function withoutOpening(text,surah,first){
+ let words=text.split(/\s+/);const n=w=>QuranCompare.normalize(w||'');
+ if(n(words[0])==='اعوذ'&&n(words[1])==='بالله'){const end=words.findIndex((w,i)=>i<8&&n(w)==='الرجيم');if(end>0)words=words.slice(end+1);}
+ const basmala=first===1?(simple[surah-1].basmala||'').split(/\s+/).filter(Boolean):[];
+ if(basmala.length&&basmala.filter((w,i)=>n(words[i])===n(w)).length>=3)words=words.slice(basmala.length);
+ return words.join(' ');
+}
 function review(){
  if(loading)return;const text=$('transcript').value.trim();
  if(!text){$('status').textContent='لم تصل كلمات للمقارنة. اقرأ مجددًا أو أدخل النص يدويًا.';return;}
  const s=Number($('surah').value),segs=rangeNumbers().map(n=>{const t=simple[s-1].ayahs[n-1].text;return {n,key:`${s}:${n}`,text:t,words:t.split(/\s+/).length,items:[]};});
- const items=QuranCompare.compare(segs.map(g=>g.text).join(' '),text),reviewToken=generation,many=segs.length>1;
+ const items=QuranCompare.compare(segs.map(g=>g.text).join(' '),withoutOpening(text,s,segs[0].n)),reviewToken=generation,many=segs.length>1;
  let seg=0,inSeg=0;
  for(const item of items){if(item.expected){while(inSeg>=segs[seg].words&&seg<segs.length-1){seg++;inSeg=0;}item.index=inSeg++;}item.seg=seg;segs[seg].items.push(item);}
  const nodes=[];
@@ -180,7 +189,7 @@ function review(){
  for(const g of segs){if(!g.items.length)continue;const score=Math.round(g.items.filter(i=>i.type==='correct').length/g.items.length*100);scores[g.key]=score;QuranLearning.learn(brain,g.key,score,now,g.words);recordActivity();}
  save('scores',scores);save('learning',brain);updateProgress();showRef();
  const count=items.filter(i=>i.type!=='correct').length,score=Math.round((items.length-count)/items.length*100);
- $('resultLabel').textContent=count?`${count} مواضع للمراجعة · ${score}٪`:'الكلمات متطابقة';showScore(score);reviewed=true;updateSteps();renderNotes(items);updatePanel();
+ $('resultLabel').textContent=count?`${count===1?'موضع واحد':count===2?'موضعان':count<=10?`${count} مواضع`:`${count} موضعًا`} للمراجعة · ${score}٪`:'الكلمات متطابقة';showScore(score);reviewed=true;updateSteps();renderNotes(items);updatePanel();
  $('resultIntro').textContent=(many?`نتيجة ${segs.length} آيات معًا. `:'')+'راجع هذه المواضع بالاستماع؛ قد يكون الاختلاف ناتجًا عن التعرف الصوتي. تطابق الكلمات لا يعني صحة التجويد.';
 }
 

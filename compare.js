@@ -1,11 +1,20 @@
 (function(scope){
 function normalize(text){return text.normalize('NFKC').replace(/[\u0610-\u061a\u064b-\u065f\u0670\u06d6-\u06ed\u0640]/g,'').replace(/[أإآٱ]/g,'ا').replace(/ى/g,'ي').replace(/[^\u0621-\u063a\u0641-\u064a\s]/g,'').trim();}
+// Spellings that sound the same are the same word: speech recognition writes «الصلاه» for «الصلاة», «يءمنون» for
+// «يؤمنون», and the spoken long alif that the Mushaf leaves out («الرحمان، ذالك، هاذا، لاكن»). Only these known
+// words get the alif rule, so a real slip such as «قال» for «قل» still counts.
+function spell(w){
+ return w.replace(/رحمان/,'رحمن').replace(/ذالك/,'ذلك').replace(/هاذ/,'هذ').replace(/لاكن/,'لكن').replace(/اولائك/,'اولئك').replace(/سماوات/,'سموات').replace(/هاؤلاء/,'هؤلاء').replace(/^مائ/,'مئ')
+  .replace(/ة$/,'ه').replace(/ى$/,'ي').replace(/[ؤئ]/g,'ء');
+}
 function compare(expected,spoken){
- const a=expected.trim().split(/\s+/).filter(Boolean), b=spoken.trim().split(/\s+/).filter(Boolean);
+ // Tokens with no letters are not words: waqf marks in the Mushaf text (ۚ ۖ ۗ ۞) and punctuation from speech
+ // recognition («،» «.») would otherwise count as missing or extra words.
+ const words=t=>t.trim().split(/\s+/).filter(w=>normalize(w)), a=words(expected), b=words(spoken);
  const d=Array.from({length:a.length+1},()=>Array(b.length+1).fill(0));
  for(let i=0;i<=a.length;i++)d[i][0]=i;for(let j=0;j<=b.length;j++)d[0][j]=j;
  // Substituting a similarly spelled word is cheaper, so a misread word pairs with its intended word rather than a neighbouring extra word.
- const na=a.map(normalize),nb=b.map(normalize);
+ const na=a.map(w=>spell(normalize(w))),nb=b.map(w=>spell(normalize(w)));
  // These checks run for every word pair (hundreds of thousands in a long passage), so they use a bounded edit
  // distance, cached per pair of spellings, instead of the full letter alignment used for the written notes.
  const ids=new Map(),id=w=>{let v=ids.get(w);if(v===undefined)ids.set(w,v=ids.size);return v;};
@@ -20,10 +29,15 @@ function compare(expected,spoken){
   const key=ia[x]*65536+ij[y];let hit=joinMemo.get(key);if(hit===undefined){hit=distance(na[x],joined[y],limit)<=limit;joinMemo.set(key,hit);}
   return hit?0.8:Infinity;
  };
- for(let i=1;i<=a.length;i++)for(let j=1;j<=b.length;j++)d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+cost(i-1,j-1),j>1?d[i-1][j-2]+joinCost(i-1,j-2):Infinity);
+ // And the reverse: two words of the ayah written as one («ياأيها»، «يابني»، «ياقوم»). Only an exact fit counts
+ // (a doubled alif written once is the same), so both words are then correct.
+ const one=w=>w.replace(/اا/g,'a').replace(/ا/g,'a');
+ const mergeCost=(x,y)=>one(na[x]+na[x+1])===one(nb[y])?0.2:Infinity;
+ for(let i=1;i<=a.length;i++)for(let j=1;j<=b.length;j++)d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+cost(i-1,j-1),j>1?d[i-1][j-2]+joinCost(i-1,j-2):Infinity,i>1?d[i-2][j-1]+mergeCost(i-2,j-1):Infinity);
  let i=a.length,j=b.length,result=[];
  while(i||j){
   if(i&&j&&d[i][j]===d[i-1][j-1]+cost(i-1,j-1)){result.push({type:na[i-1]===nb[j-1]?'correct':'changed',expected:a[--i],spoken:b[--j]});}
+  else if(i>1&&j&&d[i][j]===d[i-2][j-1]+mergeCost(i-2,j-1)){j--;result.push({type:'correct',expected:a[i-1],spoken:b[j]},{type:'correct',expected:a[i-2],spoken:b[j]});i-=2;}
   else if(i&&j>1&&d[i][j]===d[i-1][j-2]+joinCost(i-1,j-2)){const spokenWord=b[j-2]+' '+b[j-1];result.push({type:nb[j-2]+nb[j-1]===na[i-1]?'correct':'changed',expected:a[i-1],spoken:spokenWord});i--;j-=2;}
   else if(i&&d[i][j]===d[i-1][j]+1){result.push({type:'missing',expected:a[--i]});}
   else{result.push({type:'extra',spoken:b[--j]});}
