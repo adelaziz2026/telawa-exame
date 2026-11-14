@@ -72,19 +72,56 @@ function searchQuran(chapters,query,{surah=null,limit=20,partial=false,phrase=fa
  }
  return {query,total,occurrences,results};
 }
-// Which ayah says this? The words in order first; otherwise (a misheard or half-remembered quote) the ayat that
-// share most of its words, best first. exact tells which of the two it is.
+// ---- Finding an ayah from a quote that may be misheard ----
+// A word without the multi-letter prefixes written onto it (وال، بال، لل…), so «بالصبر» and «الصبر» compare as one.
+const bare=w=>{for(const p of ['وبال','ولل','فلل','وال','فال','بال','كال','لل','ال'])if(w.startsWith(p)&&w.length-p.length>=2)return w.slice(p.length);return w;};
+// Exactly one letter added, dropped or changed.
+function oneEdit(a,b){
+ if(Math.abs(a.length-b.length)>1)return false;let i=0,j=0,edits=0;
+ while(i<a.length&&j<b.length){if(a[i]===b[j]){i++;j++;continue;}if(++edits>1)return false;if(a.length>b.length)i++;else if(a.length<b.length)j++;else{i++;j++;}}
+ return edits+(a.length-i)+(b.length-j)<=1;
+}
+// How well a heard word fits a Mushaf word: the same, the same with و ف ب ل ك in front, or one letter misheard.
+function near(w,t){
+ if(w===t)return 1;
+ if((t.length===w.length+1&&t.endsWith(w)&&'وفبلك'.includes(t[0]))||(w.length===t.length+1&&w.endsWith(t)&&'وفبلك'.includes(w[0])))return 0.9;
+ if(w.length===2&&t.length===2)return w[0]===t[0]||w[1]===t[1]?0.6:0;
+ return w.length>=3&&t.length>=3&&oneEdit(w,t)?0.7:0;
+}
+// Built once per Mushaf: each ayah's words, and in how many ayat each word appears (rare words say more).
+const indexes=new WeakMap();
+function indexOf(chapters){
+ let ix=indexes.get(chapters);if(ix)return ix;
+ const ayat=[],df=new Map();
+ for(const c of chapters)for(const a of c.ayahs){const tokens=plain(a.text).split(' ').map(bare);ayat.push({c,a,tokens});for(const t of new Set(tokens))df.set(t,(df.get(t)||0)+1);}
+ ix={ayat,df};indexes.set(chapters,ix);return ix;
+}
+// Which ayah says this? The words in order first. Otherwise (misheard, or half-remembered) every ayah is scored by
+// the words it shares with the quote, weighted by how rare each word is, allowing one misheard letter per word and
+// preferring the words in the same order; exact tells which of the two it is, match is the score in percent.
 function findAyah(chapters,quote,{limit=5}={}){
+ // Speech recognition runs «يا» into the next word («يامريم»): split it again when the joined word is not in the Mushaf.
+ const {df}=indexOf(chapters);
+ quote=plain(quote).split(' ').map(w=>w.length>=4&&w.startsWith('يا')&&!df.has(bare(w))&&df.has(bare(w.slice(2)))?'يا '+w.slice(2):w).join(' ');
  const exact=searchQuran(chapters,quote,{phrase:true,limit});
  if(exact.total)return {query:quote,exact:true,total:exact.total,results:exact.results};
- const words=formsOf(plain(quote)).filter(x=>x.w.length>1);if(words.length<2)return {query:quote,exact:false,total:0,results:[]};
+ const q=plain(quote).split(' ').map(bare).filter(w=>w.length>1);if(q.length<2)return {query:quote,exact:false,total:0,results:[]};
+ const {ayat}=indexOf(chapters),N=ayat.length;
+ // A word not in the Mushaf (misheard) gets an ordinary weight rather than the highest.
+ const weights=q.map(w=>Math.log(1+N/((df.get(w)??50)+1))),sum=weights.reduce((x,y)=>x+y,0),memo=new Map();
+ const fit=(w,t)=>{const k=w+' '+t;let v=memo.get(k);if(v===undefined)memo.set(k,v=near(w,t));return v;};
  const found=[];
- for(const c of chapters)for(const a of c.ayahs){
-  const tokens=plain(a.text).split(' '),share=words.filter(x=>tokens.some(t=>x.forms.has(t))).length/words.length;
-  if(share>=0.6)found.push({share,surah:c.number,surah_name:c.name,ayah:a.numberInSurah,text:a.text});
+ for(const {c,a,tokens} of ayat){
+  let got=0,inOrder=0,last=-1;
+  for(let k=0;k<q.length;k++){
+   let best=0,pos=-1;for(let i=0;i<tokens.length;i++){const s=fit(q[k],tokens[i]);if(s>best){best=s;pos=i;if(s===1)break;}}
+   if(best){got+=weights[k]*best;if(pos>last)inOrder++;last=pos;}
+  }
+  const score=got/sum;
+  if(score>=0.5)found.push({score:score+0.05*inOrder/q.length,surah:c.number,surah_name:c.name,ayah:a.numberInSurah,text:a.text});
  }
- found.sort((x,y)=>y.share-x.share||x.text.length-y.text.length);
- return {query:quote,exact:false,total:found.length,results:found.slice(0,limit).map(({share,...r})=>({...r,match:Math.round(share*100)}))};
+ found.sort((x,y)=>y.score-x.score||x.text.length-y.text.length);
+ return {query:quote,exact:false,total:found.length,results:found.slice(0,limit).map(({score,...r})=>({...r,match:Math.min(100,Math.round(score*100))}))};
 }
 function surahInfo(chapters,n){
  const c=chapters[n-1];if(!c)throw Error(`Surah ${n} does not exist (1-114).`);

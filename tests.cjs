@@ -541,3 +541,30 @@ test('words that speech recognition runs together still match both words of the 
  // Leaving out «يا» is still a mistake.
  assert.deepEqual(C.compare('يا قوم','قوم').map(i=>i.type),['missing','correct']);
 });
+// ---------- Training benchmark over the whole Mushaf (deterministic sample) ----------
+// A correct reading in speech-recognition spelling must score 100%; a skipped word, a wrong word and a wrong letter
+// must be caught; a quote (exact or with one misheard letter) must find its ayah.
+test('benchmark: recitation over the Mushaf has no false alarms and catches every mistake',()=>{
+ const C=require('./compare.js'),S=require('./data/simple.json').data.surahs;
+ let seed=11;const rnd=()=>(seed=(seed*1103515245+12345)%2147483648)/2147483648;
+ const SWAP={'ص':'س','س':'ص','ح':'ه','ه':'ح','ذ':'ز','ز':'ذ','ض':'د','ظ':'ض','ث':'س','ق':'ك','ك':'ق','ط':'ت','ت':'ط','غ':'خ'};
+ const heard=t=>C.normalize(t).replace(/ة(?= |$)/g,'ه').replace(/(^| )يا /g,'$1يا').split(/\s+/).filter(Boolean);
+ const fails=[];let n=0;
+ S.forEach((c,ci)=>c.ayahs.forEach((a,ai)=>{
+  if((ci+ai)%4)return;n++;const key=`${c.number}:${a.numberInSurah}`,w=heard(a.text);
+  if(!C.compare(a.text,w.join(' ')).every(i=>i.type==='correct'))fails.push('false alarm '+key);
+  if(w.length<3)return;const k=Math.floor(rnd()*w.length);
+  if(C.compare(a.text,w.filter((_,i)=>i!==k).join(' ')).every(i=>i.type==='correct'))fails.push('missed skip '+key);
+  const l=[...w[k]],at=l.findIndex(x=>SWAP[x]);if(at<0)return;l[at]=SWAP[l[at]];
+  if(C.compare(a.text,w.map((x,i)=>i===k?l.join(''):x).join(' ')).every(i=>i.type==='correct'))fails.push(`missed letter ${key} ${w[k]}→${l.join('')}`);
+ }));
+ assert.ok(n>1500);assert.deepEqual(fails,[]);
+});
+test('benchmark: a quote finds its ayah, also with one misheard letter',()=>{
+ const S=require('./data/simple.json').data.surahs;
+ const cases=[['وجعلنا من الماء كل شيء حي',21,30],['يامريم ان الله اصطفاك',3,42],['الله نور السماوات والارض',24,35],['ولقد يسرنا القران للذكر',54,17],['قل هو الله احد',112,1],['ان مع العسر يسرا',94,5],
+  // One letter misheard (ص/س، ذ/ز، ح/ه، ق/ك):
+  ['الله لا اله الا هو الحي القيوم لا تاخزه سنه',2,255],['والعسر ان الانسان لفي خسر',103,2],['انا اعطيناك الكوسر',108,1],['قل اعوز برب الناس',114,1],['ولسوف يعطيك ربك فترضي',93,5],['الحمد لله رب العالمين الرحمن الرهيم',1,2]];
+ const fails=cases.filter(([q,s,a])=>!K.findAyah(S,q).results.some(r=>r.surah===s&&r.ayah===a)).map(([q])=>q);
+ assert.deepEqual(fails,[]);
+});

@@ -1,5 +1,5 @@
 // Offline support: the app shell and the Quran text are cached; recitation audio and APIs still need the internet.
-const VERSION = 'tarteel-v26';
+const VERSION = 'tarteel-v27';
 const SHELL = ['./', 'index.html', 'style.css', 'compare.js', 'learning.js', 'asr.js', 'knowledge.js', 'app.js', 'assistant.js', 'meet.html', 'meet.css', 'meet.js', 'board.js', 'appboard.js', 'mushaf.js', 'manifest.webmanifest', 'icons/logo.svg', 'icons/icon-192.png', 'icons/icon-512.png'];
 const DATA = ['data/quran.json', 'data/simple.json'];
 
