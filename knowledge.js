@@ -60,13 +60,15 @@ function countHits(tokens,text,words,{partial,phrase}){
  if(!words.every(x=>tokens.some(t=>x.forms.has(t))))return 0;
  return words.length===1?tokens.filter(t=>words[0].forms.has(t)).length:1;
 }
+// Each ayah's normalised text, worked out once (searches run over all 6,236 ayat).
+const plainOf=new WeakMap(),plainAyah=a=>{let t=plainOf.get(a);if(t===undefined)plainOf.set(a,t=plain(a.text));return t;};
 function searchQuran(chapters,query,{surah=null,limit=20,partial=false,phrase=false}={}){
  const q=plain(query);if(!q)return {query,total:0,occurrences:0,results:[]};
  const words=formsOf(q),results=[];let total=0,occurrences=0;
  for(const c of chapters){
   if(surah&&c.number!==surah)continue;
   for(const a of c.ayahs){
-   const text=plain(a.text),n=countHits(text.split(' '),text,words,{partial,phrase});
+   const text=plainAyah(a),n=countHits(text.split(' '),text,words,{partial,phrase});
    if(n){total++;occurrences+=n;if(results.length<limit)results.push({surah:c.number,surah_name:c.name,ayah:a.numberInSurah,text:a.text});}
   }
  }
@@ -92,9 +94,10 @@ function near(w,t){
 const indexes=new WeakMap();
 function indexOf(chapters){
  let ix=indexes.get(chapters);if(ix)return ix;
- const ayat=[],df=new Map();
- for(const c of chapters)for(const a of c.ayahs){const tokens=plain(a.text).split(' ').map(bare);ayat.push({c,a,tokens});for(const t of new Set(tokens))df.set(t,(df.get(t)||0)+1);}
- ix={ayat,df};indexes.set(chapters,ix);return ix;
+ const ayat=[],df=new Map(),posts=new Map();
+ for(const c of chapters)for(const a of c.ayahs){const tokens=plainAyah(a).split(' ').map(bare),n=ayat.length;ayat.push({c,a,tokens});for(const t of new Set(tokens)){df.set(t,(df.get(t)||0)+1);(posts.get(t)||posts.set(t,[]).get(t)).push(n);}}
+ // posts: which ayat contain each word, so a search scores only the ayat sharing a word with the quote.
+ ix={ayat,df,posts};indexes.set(chapters,ix);return ix;
 }
 // Which ayah says this? The words in order first. Otherwise (misheard, or half-remembered) every ayah is scored by
 // the words it shares with the quote, weighted by how rare each word is, allowing one misheard letter per word and
@@ -106,12 +109,16 @@ function findAyah(chapters,quote,{limit=5}={}){
  const exact=searchQuran(chapters,quote,{phrase:true,limit});
  if(exact.total)return {query:quote,exact:true,total:exact.total,results:exact.results};
  const q=plain(quote).split(' ').map(bare).filter(w=>w.length>1);if(q.length<2)return {query:quote,exact:false,total:0,results:[]};
- const {ayat}=indexOf(chapters),N=ayat.length;
+ const {ayat,posts}=indexOf(chapters),N=ayat.length;
  // A word not in the Mushaf (misheard) gets an ordinary weight rather than the highest.
  const weights=q.map(w=>Math.log(1+N/((df.get(w)??50)+1))),sum=weights.reduce((x,y)=>x+y,0),memo=new Map();
  const fit=(w,t)=>{const k=w+' '+t;let v=memo.get(k);if(v===undefined)memo.set(k,v=near(w,t));return v;};
  const found=[];
- for(const {c,a,tokens} of ayat){
+ // Candidates: ayat with a word close to some word of the quote (one letter off at most).
+ // Very common words («الله»، «لا»، «من») would bring in most of the Mushaf, so the rarer words pick the candidates.
+ const rare=q.map((w,k)=>[w,weights[k]]).sort((x,y)=>y[1]-x[1]).slice(0,Math.max(2,Math.ceil(q.length/2))).map(([w])=>w);
+ const candidates=new Set();for(const w of rare)for(const [t,list] of posts)if(Math.abs(t.length-w.length)<=1&&near(w,t))for(const n of list)candidates.add(n);
+ for(const n of candidates){const {c,a,tokens}=ayat[n];
   let got=0,inOrder=0,last=-1;
   for(let k=0;k<q.length;k++){
    let best=0,pos=-1;for(let i=0;i<tokens.length;i++){const s=fit(q[k],tokens[i]);if(s>best){best=s;pos=i;if(s===1)break;}}

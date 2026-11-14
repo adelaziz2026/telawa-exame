@@ -77,7 +77,39 @@ function explain(item){
  const ops=letterDiff(item.expected,item.spoken),length=[...normalize(item.expected)].length;
  if(ops.length>Math.max(2,Math.ceil(length/2)))return `قُرئت «${item.spoken}» بدل «${item.expected}»: الكلمة مختلفة كثيرًا، فقد تكون كلمة أخرى أو خطأً في التعرف الصوتي.`;
  const parts=ops.map(o=>o.op==='sub'?`نطقت «${o.to}» بدل «${o.from}»${where(o.pos,length)}`:o.op==='del'?`حذفت حرف «${o.from}»${where(o.pos,length)}`:`زدت حرف «${o.to}»${where(o.pos,length)}`);
- return `في «${item.expected}»: ${parts.join('، ')}.`;
+ const tip=ops.map(o=>o.op==='sub'&&TIPS[[o.from,o.to].sort().join('')]).find(Boolean);
+ return `في «${item.expected}»: ${parts.join('، ')}.${tip?` 💡 ${tip}`:''}`;
 }
-if(typeof module!=='undefined')module.exports={normalize,compare,letterDiff,explain};else scope.QuranCompare={normalize,compare,letterDiff,explain};
+// Letters that are easily confused, with how each is articulated (makhraj and sifat), shown under the mistake.
+// Speech recognition can also mishear these pairs, so the tip is advice, not a verdict.
+const TIP={
+ 'سص':'الصاد مفخّمة مطبقة (يرتفع أقصى اللسان مع إطباق وسطه)، والسين مرققة؛ ومخرجهما من طرف اللسان فوق الثنايا السفلى.',
+ 'تط':'الطاء مفخّمة مطبقة والتاء مرققة، ومخرجهما واحد: طرف اللسان مع أصول الثنايا العليا.',
+ 'دض':'الضاد من حافة اللسان مع ما يحاذيها من الأضراس العليا وهي مفخّمة مطبقة، والدال من طرف اللسان مع أصول الثنايا العليا.',
+ 'ضظ':'الضاد من حافة اللسان مع الأضراس العليا، والظاء من طرف اللسان مع أطراف الثنايا العليا (يخرج طرف اللسان قليلًا).',
+ 'ذز':'الذال من طرف اللسان مع أطراف الثنايا العليا (يخرج طرف اللسان قليلًا)، والزاي حرف صفير من طرف اللسان فوق الثنايا السفلى.',
+ 'زظ':'الظاء من طرف اللسان مع أطراف الثنايا العليا وهي مفخّمة، والزاي حرف صفير من طرف اللسان فوق الثنايا السفلى.',
+ 'ثس':'الثاء من طرف اللسان مع أطراف الثنايا العليا (يخرج طرف اللسان قليلًا)، والسين حرف صفير من طرف اللسان فوق الثنايا السفلى.',
+ 'تث':'الثاء من طرف اللسان مع أطراف الثنايا العليا، والتاء من طرف اللسان مع أصول الثنايا العليا.',
+ 'دذ':'الذال من طرف اللسان مع أطراف الثنايا العليا، والدال من طرف اللسان مع أصول الثنايا العليا مع قلقلة عند السكون.',
+ 'حه':'الحاء من وسط الحلق، والهاء من أقصى الحلق (أعمق وأخف).',
+ 'اع':'العين من وسط الحلق، والهمزة والألف من أقصى الحلق والجوف؛ أعطِ العين حقها من وسط الحلق.',
+ 'ءع':'العين من وسط الحلق، والهمزة من أقصى الحلق.',
+ 'قك':'القاف من أقصى اللسان مع ما فوقه من الحنك الأعلى وهي مفخّمة، والكاف أدنى منها قليلًا إلى الفم وهي مرققة.',
+ 'خغ':'الغين والخاء من أدنى الحلق، والغين مجهورة (يجري معها الصوت) والخاء مهموسة (يجري معها النفس).',
+ 'حخ':'الحاء من وسط الحلق، والخاء من أدنى الحلق.',
+};
+const TIPS=Object.fromEntries(Object.entries(TIP).map(([k,v])=>[[...k].sort().join(''),v]));
+// The letters swapped in a misread word ({expected, spoken} pairs), for tracking which letters a reader confuses.
+// A word read very differently (another word, or misheard) says nothing about letters, so it gives none.
+function confusedLetters(item){
+ if(item.type!=='changed')return [];
+ const ops=letterDiff(item.expected,item.spoken),length=[...normalize(item.expected)].length;
+ // Only a near-miss (at most a third of the letters differ) points at specific letters.
+ if(ops.length>Math.max(1,Math.floor(length/3)))return [];
+ return ops.filter(o=>o.op==='sub').map(o=>({expected:o.from,spoken:o.to}));
+}
+const letterTip=(a,b)=>TIPS[[a,b].sort().join('')]||'';
+const api={normalize,compare,letterDiff,explain,confusedLetters,letterTip};
+if(typeof module!=='undefined')module.exports=api;else scope.QuranCompare=api;
 })(globalThis);

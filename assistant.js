@@ -75,7 +75,7 @@ const tools={
   const keys=Object.keys(scores),values=Object.values(scores),now=Date.now();
   const weakest=keys.map(key=>{const [s,a]=key.split(':').map(Number),words=simple[s-1]?.ayahs[a-1]?.text.split(/\s+/).length||1,p=QuranLearning.recall(brain,key,now,words);return {surah:s,ayah:a,name:surahName(s),last_score:scores[key],predicted_recall:Math.round((p??scores[key]/100)*100)};})
    .filter(w=>w.name).sort((x,y)=>x.predicted_recall-y.predicted_recall).slice(0,5);
-  return {ayat_reviewed:keys.length,average_accuracy:values.length?Math.round(values.reduce((a,b)=>a+b,0)/values.length):null,streak_days:streak(activity),reviews_today:activity[day()]||0,weakest};
+  return {weak_letters:typeof weakLetters==='function'?weakLetters().map(l=>({read_as:l.spoken,instead_of:l.expected,times:l.count,articulation_tip:l.tip})):[],ayat_reviewed:keys.length,average_accuracy:values.length?Math.round(values.reduce((a,b)=>a+b,0)/values.length):null,streak_days:streak(activity),reviews_today:activity[day()]||0,weakest};
  },
 };
 // A short Arabic label shown in the chat for each action.
@@ -299,14 +299,20 @@ async function localTurn(text){
   const reciterId=findReciter(t),repeat=repeatIn(t);
   // Egyptian: «سمّعني» = play it for me, «عايز اسمع» = I want to listen.
   if(/(شغل|استمع|اسمع|سمعني|اقرا|يقرا|تلاوه|رتل|بصوت)/.test(t)||reciterId){const out=act('play_recitation',{reciter:reciterId,repeat});said.push(`هشغّلك ${said.length?out.playing.replace(/^.*?، /,''):out.playing} بصوت ${out.reciter}${out.repeat>1?` ${out.repeat} مرات`:''}.`);did=true;}
+  // Letters the reader confuses: «ايه الحروف اللي بغلط فيها؟»
+  const letters=/(حروف|حرف)/.test(t)&&/(بغلط|اغلط|غلط|اخطا|بخطئ|بخلط|اخلط|ضعيف|محتاج)/.test(t);
+  if(letters&&/(بغلط|اغلط|غلط|اخطا|بخطئ|بخلط|اخلط|ضعيف|محتاج)/.test(t)){
+   const l=typeof weakLetters==='function'?weakLetters():[];chip(actionLabel.get_progress);did=true;
+   said.push(l.length?'أكتر حروف بتلخبط فيها: '+l.map(x=>`بتقرا «${x.spoken}» بدل «${x.expected}» (${x.count} مرات)`).join('، ')+'.'+(l[0].tip?' نصيحة: '+l[0].tip:''):'لسه مفيش حروف بتتكرر فيها الأخطاء. كمّل تسميع وأنا هتابع معاك.');
+  }
   // 4. Progress and mistakes.
-  if(/(تقدم|احتاج|محتاج|اراجع|مراجعتها|ضعيف|اضعف|احصائ)/.test(t)){
+  if(!letters&&/(تقدم|احتاج|محتاج|اراجع|مراجعتها|ضعيف|اضعف|احصائ)/.test(t)){
    const p=tools.get_progress();
    if(!p.ayat_reviewed)said.push('لسه ما راجعتش ولا آية. اختار آية ودوس «ابدأ التسميع» عشان نبدأ.');
    else{said.push(`راجعت ${p.ayat_reviewed} آية ومتوسط دقتك ${p.average_accuracy}٪، وبقالك ${p.streak_days} يوم ورا بعض.`);if(p.weakest.length)said.push('أكتر آيات محتاجة مراجعة: '+p.weakest.map(w=>`${w.name} ${w.ayah} (احتمال إنك فاكرها ${w.predicted_recall}٪)`).join('، ')+'.');}
    chip(actionLabel.get_progress);did=true;
   }
-  if(/(اخطا|خطا|ملاحظ|غلط)/.test(t)){
+  if(!letters&&/(اخطا|خطا|ملاحظ|غلط)/.test(t)){
    const r=tools.get_app_state().last_review;
    said.push(r.notes.length?'في آخر تسميع: '+r.notes.join(' '):'مفيش أخطاء متسجّلة في آخر تسميع. سمّع آية الأول وبعدين اسألني.');
    chip(actionLabel.get_app_state);did=true;

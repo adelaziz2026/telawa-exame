@@ -519,3 +519,9 @@ body.mushaf-active{overflow:hidden}
   .mushaf-text{font-size:calc(23px * var(--mushaf-scale,1));line-height:2.2}
   .mushaf-basmala{font-size:calc(22px * var(--mushaf-scale,1))}
 }
+
+/* Letters the reader confuses most */
+.letter-list{list-style:none;margin:0 0 12px;padding:0;display:grid;gap:8px}
+.letter-list li{background:var(--soft);border-radius:12px;padding:10px 12px;font-size:14px}
+.letter-list strong{color:var(--ink)}
+.letter-tip{display:block;margin-top:6px;color:var(--muted);line-height:1.7;font-size:12.5px}

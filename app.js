@@ -34,6 +34,8 @@ function separateBasmala(chapters){for(const c of chapters){for(const a of c.aya
 function load(key,fallback){try{return JSON.parse(localStorage.getItem('tarteel:'+key))??fallback;}catch{return fallback;}}
 function save(key,value){try{localStorage.setItem('tarteel:'+key,JSON.stringify(value));}catch{}}
 let scores=load('scores',{});
+// Which letters the reader confuses, as «expected+spoken» → count (e.g. «صس»: read س for ص). Kept on this device only.
+let letterSlips=load('letters',{});
 let brain=load('learning',null);if(brain?.weights?.length!==QuranLearning.PRIOR.length)brain=QuranLearning.createState();if(!brain.clf)brain.clf=QuranLearning.createClassifier();
 function make(tag,className,text){const node=document.createElement(tag);node.className=className;if(text!=null)node.textContent=text;return node;}
 // Written notes, one card per mistake: quoted letters and words become highlighted chips, followed by the
@@ -187,7 +189,8 @@ function review(){
  $('result').replaceChildren(...nodes);
  const now=Date.now();
  for(const g of segs){if(!g.items.length)continue;const score=Math.round(g.items.filter(i=>i.type==='correct').length/g.items.length*100);scores[g.key]=score;QuranLearning.learn(brain,g.key,score,now,g.words);recordActivity();}
- save('scores',scores);save('learning',brain);updateProgress();showRef();
+ for(const item of items)for(const p of QuranCompare.confusedLetters?.(item)||[])letterSlips[p.expected+p.spoken]=(letterSlips[p.expected+p.spoken]||0)+1;
+ save('scores',scores);save('learning',brain);save('letters',letterSlips);updateProgress();showRef();
  const count=items.filter(i=>i.type!=='correct').length,score=Math.round((items.length-count)/items.length*100);
  $('resultLabel').textContent=count?`${count===1?'موضع واحد':count===2?'موضعان':count<=10?`${count} مواضع`:`${count} موضعًا`} للمراجعة · ${score}٪`:'الكلمات متطابقة';showScore(score);reviewed=true;updateSteps();renderNotes(items);updatePanel();
  $('resultIntro').textContent=(many?`نتيجة ${segs.length} آيات معًا. `:'')+'راجع هذه المواضع بالاستماع؛ قد يكون الاختلاف ناتجًا عن التعرف الصوتي. تطابق الكلمات لا يعني صحة التجويد.';
@@ -335,6 +338,14 @@ function updateProgress(){
  const weak=keys.map(key=>{const [ks,ka]=key.split(':').map(Number),words=simple[ks-1]?.ayahs[ka-1]?.text.split(/\s+/).length||1,p=QuranLearning.recall(brain,key,now,words);return {key,s:ks,a:ka,p:p??scores[key]/100};}).filter(w=>surahs[w.s-1]?.ayahs[w.a-1]&&w.p<0.95).sort((x,y)=>x.p-y.p).slice(0,5);
  $('weakList').replaceChildren(...weak.map(w=>{const li=make('li',''),button=make('button','');const label=make('span','');label.append(make('span','',`${surahs[w.s-1].name} • الآية ${w.a}`),make('span','weak-meta',` — آخر نتيجة ${scores[w.key]}٪`));button.append(label,make('span',`weak-p${w.p>=0.6?' mid':''}`,Math.round(w.p*100)+'٪'));button.title='احتمال التذكر المتوقع';button.onclick=()=>{goTo(w.s,w.a);document.querySelector?.('.reader')?.scrollIntoView({behavior:'smooth',block:'start'});};li.append(button);return li;}));
  $('weakEmpty').hidden=weak.length>0;
+ updateLetters();
+}
+// The letter pairs read wrongly most often, with how to articulate them; pairs seen once may be speech-recognition slips.
+function weakLetters(){return Object.entries(letterSlips).filter(([,n])=>n>=2).sort((x,y)=>y[1]-x[1]).slice(0,3).map(([k,n])=>({expected:k[0],spoken:k[1],count:n,tip:QuranCompare.letterTip?.(k[0],k[1])||''}));}
+function updateLetters(){
+ if(!$('letterList'))return;const list=weakLetters();
+ $('letterList').replaceChildren(...list.map((l,i)=>{const li=make('li','');li.append(make('strong','',`تقرأ «${l.spoken}» بدل «${l.expected}»`),make('span','weak-meta',` — ${l.count===2?'مرتين':l.count<=10?l.count+' مرات':l.count+' مرة'}`));if(l.tip&&i===0)li.append(make('small','letter-tip','💡 '+l.tip));return li;}));
+ $('letterTitle').hidden=$('letterList').hidden=!list.length;
 }
 // Backup and restore: everything the app keeps is in localStorage under "tarteel:".
 const PREFS=['theme','verseScale','engine','hide'];

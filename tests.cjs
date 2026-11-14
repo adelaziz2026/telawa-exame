@@ -568,3 +568,25 @@ test('benchmark: a quote finds its ayah, also with one misheard letter',()=>{
  const fails=cases.filter(([q,s,a])=>!K.findAyah(S,q).results.some(r=>r.surah===s&&r.ayah===a)).map(([q])=>q);
  assert.deepEqual(fails,[]);
 });
+test('mistake notes explain how to articulate commonly confused letters',()=>{
+ const C=require('./compare.js'),note=(e,s)=>C.explain(C.compare(e,s)[0]);
+ assert.match(note('الصراط','السراط'),/نطقت «س» بدل «ص».*💡 الصاد مفخّمة/);
+ assert.match(note('خسر','خصر'),/💡 الصاد مفخّمة/);
+ assert.match(note('الحمد','الهمد'),/💡 الحاء من وسط الحلق/);
+ assert.match(note('قل','كل'),/💡 القاف من أقصى اللسان/);
+ assert.doesNotMatch(note('الرحيم','الرحيمم'),/💡/);
+});
+test('the letters a reader confuses are counted on the device, shown with a tip, and the assistant knows them',async()=>{
+ const C=require('./compare.js');
+ assert.deepEqual(C.confusedLetters(C.compare('الصراط','السراط')[0]),[{expected:'ص',spoken:'س'}]);
+ assert.deepEqual(C.confusedLetters(C.compare('الصراط','الكتاب')[0]),[]);
+ const data={data:{surahs:Array.from({length:114},(_,i)=>({number:i+1,name:'سورة',ayahs:[{number:1,numberInSurah:1,text:'اهدنا الصراط المستقيم'}]}))}};
+ const saved={};const h=await appHarness({fetch:async()=>({ok:true,json:async()=>structuredClone(data)})});
+ const spoken=assistantHarness(h,[]);h.ctx.localStorage={getItem:k=>saved[k]??null,setItem:(k,v)=>{saved[k]=v;}};
+ for(let i=0;i<2;i++){h.el('transcript').value='اهدنا السراط المستكيم';h.ctx.review();}
+ assert.deepEqual(JSON.parse(saved['tarteel:letters']),{'صس':2,'قك':2});
+ assert.equal(h.el('letterList').children.length,2);
+ await h.ctx.TarteelAssistant.ask('ايه الحروف اللي بغلط فيها');
+ assert.match(spoken.at(-1).text,/بتقرا «س» بدل «ص» \(2 مرات\).*نصيحة: الصاد مفخّمة/);
+ assert.equal(h.ctx.TarteelAssistant.tools.get_progress().weak_letters[0].instead_of,'ص');
+});
