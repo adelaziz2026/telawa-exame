@@ -7,8 +7,8 @@ const LIB='https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1';
 const MODELS={
  // whisper-base: fewer misheard words on quiet or noisy recordings (~160 MB).
  accurate:{id:'aaqibhabib/whisper-base-ar-quran-onnx',options:{}},
- // The same model with its full-precision decoder: about 15% fewer misheard words on professional recitations
- // (word error rate 8.2% vs 9.6%, measured with everyayah.com audio), and faster, but ~400 MB: for computers.
+ // The same model with its full-precision decoder: about 10% fewer misheard words on professional recitations
+ // (word error rate 10.3% vs 11.4% on 190 ayat by 2 reciters, everyayah.com audio), and faster, but ~400 MB: for computers.
  best:{id:'aaqibhabib/whisper-base-ar-quran-onnx',options:{},decoder:'fp32'},
  // whisper-tiny: faster and smaller (~63 MB), but mishears more.
  fast:{id:'Sharjeelbaig/whisper-tiny-ar-quran-onnx',options:{language:'arabic',task:'transcribe'}},

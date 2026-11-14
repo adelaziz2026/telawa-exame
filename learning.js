@@ -45,11 +45,11 @@ const CONFUSABLE=[['ث','س','ص'],['ذ','ز','ظ'],['ض','ظ','د'],['ط','ت']
 const confusable=(a,b)=>CONFUSABLE.some(group=>group.includes(a)&&group.includes(b));
 // Letter pairs the on-device model itself mishears («heard» for «right», key right+heard), measured by running it on
 // correct recitations by professional reciters (everyayah.com): the share of its letter errors that are this pair.
-const ASR_PAIRS=/*ASR_PAIRS*/{"نر":0.4,"ان":0.5,"تج":0.4,"او":0.4,"نع":0.63,"مو":0.57,"رظ":0.4,"ثت":0.4,"مل":0.63,"نا":0.57,"اع":0.5,"ثذ":0.4,"بم":0.4,"مك":0.4,"يا":0.4,"سك":0.4,"مب":0.4,"عا":0.4,"هك":0.73,"نء":0.4,"اي":0.67,"يج":0.4,"لن":0.4,"تا":0.5,"عر":0.4,"اؤ":0.4,"لر":0.4,"كا":0.4,"كق":0.4,"وا":0.5,"طص":0.4,"ها":0.57,"له":0.4,"ءؤ":0.4,"اك":0.4,"ما":0.5,"وي":0.4,"يو":0.4,"نم":0.5};
+const ASR_PAIRS=/*ASR_PAIRS*/{"نر":0.57,"ان":0.73,"تج":0.4,"او":0.5,"نع":0.75,"مو":0.83,"رظ":0.4,"ثت":0.5,"مل":0.85,"نا":0.75,"اع":0.63,"لا":0.4,"ثذ":0.4,"بم":0.4,"مك":0.5,"يا":0.63,"سك":0.4,"مب":0.4,"عا":0.57,"هك":0.82,"نء":0.4,"اي":0.81,"يج":0.5,"لن":0.67,"تا":0.57,"عر":0.4,"اؤ":0.4,"لر":0.5,"كا":0.67,"كق":0.5,"وا":0.63,"طص":0.4,"ها":0.7,"له":0.4,"ءؤ":0.4,"اك":0.5,"ما":0.63,"هت":0.4,"وي":0.7,"يو":0.75,"ين":0.4,"تذ":0.4,"ذب":0.4,"تن":0.4,"ام":0.63,"لم":0.7,"نم":0.75,"لذ":0.4,"هي":0.57,"يه":0.4,"نل":0.57,"رو":0.4,"سش":0.4,"بف":0.57,"دج":0.4,"وم":0.4,"اه":0.4,"هم":0.4,"هن":0.4,"لو":0.4,"ال":0.4,"ني":0.4,"خق":0.4,"بد":0.4,"لي":0.57,"رل":0.4,"قط":0.4,"لع":0.4,"رع":0.5,"من":0.4,"اب":0.4};
 // Features: bias, missing, extra, changed, share of letters edited, share of edits between similar-sounding letters,
 // word length, on-device engine, how typical of the model's own errors the swapped letters are.
 // The starting weights were trained on the model's real errors on correct recitations against simulated reading mistakes.
-const CLF_PRIOR=/*CLF_PRIOR*/[0.23,-1.66,1.85,0.17,-1.28,-1.12,-0.38,0.29,2.77];
+const CLF_PRIOR=/*CLF_PRIOR*/[0.28,-1.26,1.41,0.16,-1.45,-1.22,-0.35,0.29,1.66];
 function mistakeFeatures({type,ops=[],length=0,device=false}){
  const subs=ops.filter(o=>o.op==='sub');
  return [1,type==='missing'?1:0,type==='extra'?1:0,type==='changed'?1:0,type==='changed'&&length?Math.min(1,ops.length/length):0,subs.length?subs.filter(o=>confusable(o.from,o.to)).length/subs.length:0,Math.min(length,10)/10,device?1:0,subs.length?subs.reduce((a,o)=>a+(ASR_PAIRS[o.from+o.to]||0),0)/subs.length:0];
