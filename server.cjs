@@ -54,6 +54,8 @@ function handle(req, res) {
   if (req.method !== 'GET' && req.method !== 'HEAD') return send(req, res, 405, {'Allow':'GET, HEAD','Content-Type':'text/plain; charset=utf-8'}, 'Method not allowed');
   if (pathname === '/api/health') return send(req, res, 200, {'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'}, JSON.stringify({status:'ok', uptime:Math.round((Date.now() - started) / 1000)}));
   if (pathname === '/') pathname = '/index.html';
+  // Browsers ask for /favicon.ico even when the page names its icon: answer with the app icon instead of a 404.
+  if (pathname === '/favicon.ico') pathname = '/icons/icon-192.png';
   const file = path.resolve(root, '.' + pathname), rel = path.relative(root, file).split(path.sep).join('/'), ext = path.extname(file);
   const parts = rel.split('/');
   if (!file.startsWith(root + path.sep) || !types[ext] || parts.some(p => p.startsWith('.')) || hidden.has(parts[0]) || /^package(-lock)?\.json$/.test(rel)) return send(req, res, 404, {'Content-Type':'text/plain; charset=utf-8'}, 'Not found');

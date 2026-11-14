@@ -637,3 +637,18 @@ test('the most accurate on-device model uses the full-precision decoder',()=>{
  const M=ctx.DeviceASR.MODELS;assert.equal(M.best.id,M.accurate.id);assert.equal(M.best.decoder,'fp32');assert.equal(M.accurate.decoder,undefined);
  assert.match(fs.readFileSync(require.resolve('./index.html'),'utf8'),/<option value="device-best">/);
 });
+test('the server answers /favicon.ico with the app icon',()=>withServer(async request=>{
+ const r=await request('/favicon.ico');assert.equal(r.status,200);assert.match(r.headers['content-type'],/image\/png/);
+}));
+test('assistant answers clearly when a place does not exist or a follow-up has nothing to follow',async()=>{
+ const real={'data/quran.json':require('./data/quran.json'),'data/simple.json':require('./data/simple.json')};
+ const h=await appHarness({fetch:async u=>({ok:true,json:async()=>real[u]})});h.ctx.QuranKnowledge=K;
+ const spoken=assistantHarness(h,[]),say=async q=>{await h.ctx.TarteelAssistant.ask(q);return spoken.at(-1).text;};
+ assert.match(await say('كمل'),/لسه ما فسّرتلكش آية/);
+ assert.match(await say('افتحها'),/مفيش نتايج بحث لسه/);
+ assert.match(await say('معنى كلمة'),/معنى أنهي كلمة/);
+ assert.match(await say('ابحث عن'),/قوللي الكلمة/);
+ assert.match(await say('فين الآية اللي بتقول'),/الآية بتقول إيه/);
+ assert.match(await say('تفسير سورة 200'),/القرآن 114 سورة بس/);
+ assert.match(await say('احكام التجويد في سورة الفاتحة آية 99'),/سورة الفاتحة فيها 7 آيات بس، فمفيش آية 99/);
+});
