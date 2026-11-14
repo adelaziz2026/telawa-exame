@@ -43,13 +43,26 @@ function choose(state,candidates,now,exclude){
 // predicting whether a flagged mistake is a speech-recognition error rather than a recitation error.
 const CONFUSABLE=[['ث','س','ص'],['ذ','ز','ظ'],['ض','ظ','د'],['ط','ت'],['ق','ك'],['ح','ه'],['ع','ا','ء'],['ة','ه','ت'],['ن','م']];
 const confusable=(a,b)=>CONFUSABLE.some(group=>group.includes(a)&&group.includes(b));
-// Features: bias, missing, extra, changed, share of letters edited, share of edits between similar-sounding letters, word length, on-device engine.
-const CLF_PRIOR=[-0.3,0.3,0,0,1.2,1.5,-0.3,0];
+// Letter pairs the on-device model itself mishears («heard» for «right», key right+heard), measured by running it on
+// correct recitations by professional reciters (everyayah.com): the share of its letter errors that are this pair.
+const ASR_PAIRS=/*ASR_PAIRS*/{"نر":0.4,"ان":0.5,"تج":0.4,"او":0.4,"نع":0.63,"مو":0.57,"رظ":0.4,"ثت":0.4,"مل":0.63,"نا":0.57,"اع":0.5,"ثذ":0.4,"بم":0.4,"مك":0.4,"يا":0.4,"سك":0.4,"مب":0.4,"عا":0.4,"هك":0.73,"نء":0.4,"اي":0.67,"يج":0.4,"لن":0.4,"تا":0.5,"عر":0.4,"اؤ":0.4,"لر":0.4,"كا":0.4,"كق":0.4,"وا":0.5,"طص":0.4,"ها":0.57,"له":0.4,"ءؤ":0.4,"اك":0.4,"ما":0.5,"وي":0.4,"يو":0.4,"نم":0.5};
+// Features: bias, missing, extra, changed, share of letters edited, share of edits between similar-sounding letters,
+// word length, on-device engine, how typical of the model's own errors the swapped letters are.
+// The starting weights were trained on the model's real errors on correct recitations against simulated reading mistakes.
+const CLF_PRIOR=/*CLF_PRIOR*/[0.23,-1.66,1.85,0.17,-1.28,-1.12,-0.38,0.29,2.77];
 function mistakeFeatures({type,ops=[],length=0,device=false}){
  const subs=ops.filter(o=>o.op==='sub');
- return [1,type==='missing'?1:0,type==='extra'?1:0,type==='changed'?1:0,type==='changed'&&length?Math.min(1,ops.length/length):0,subs.length?subs.filter(o=>confusable(o.from,o.to)).length/subs.length:0,Math.min(length,10)/10,device?1:0];
+ return [1,type==='missing'?1:0,type==='extra'?1:0,type==='changed'?1:0,type==='changed'&&length?Math.min(1,ops.length/length):0,subs.length?subs.filter(o=>confusable(o.from,o.to)).length/subs.length:0,Math.min(length,10)/10,device?1:0,subs.length?subs.reduce((a,o)=>a+(ASR_PAIRS[o.from+o.to]||0),0)/subs.length:0];
 }
 function createClassifier(){return {weights:CLF_PRIOR.slice(),n:0,correct:0};}
+// A classifier saved by an older version: one you never trained takes the new weights; one you trained keeps
+// yours and gets the new feature's starting weight.
+function upgradeClassifier(clf){
+ if(!clf||!Array.isArray(clf.weights))return createClassifier();
+ if(!clf.n)return createClassifier();
+ if(clf.weights.length<CLF_PRIOR.length)clf.weights=[...clf.weights,...CLF_PRIOR.slice(clf.weights.length)];
+ return clf;
+}
 function classify(clf,x){return predict(clf.weights,x);}
 function label(clf,x,isRecognitionError){
  const p=classify(clf,x),y=isRecognitionError?1:0;
@@ -58,6 +71,6 @@ function label(clf,x,isRecognitionError){
  const rate=0.4/Math.sqrt(1+clf.n/10);clf.weights=clf.weights.map((w,i)=>w+rate*(y-p)*x[i]);clf.n++;
  return p;
 }
-const api={features,predict,createState,recall,learn,choose,PRIOR,mistakeFeatures,createClassifier,classify,label,confusable};
+const api={features,predict,createState,recall,learn,choose,PRIOR,mistakeFeatures,createClassifier,upgradeClassifier,classify,label,confusable,ASR_PAIRS,CLF_PRIOR};
 if(typeof module!=='undefined')module.exports=api;else scope.QuranLearning=api;
 })(globalThis);

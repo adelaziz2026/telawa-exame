@@ -622,3 +622,18 @@ test('assistant explains tajweed, finds it in an ayah, and answers Quran-science
  assert.match(await say('فين الآية اللي بتقول وجعلنا من الماء كل شيء حي'),/سورة الانبياء، الآية 30/);
  const t=h.ctx.TarteelAssistant.tools;assert.equal(t.get_tajweed({surah:113,ayah:4}).riwaya,'حفص عن عاصم');assert.ok(t.explain_tajweed_rule({rule:'قلقلة'}).matched);
 });
+test('ta marbuta read on as «ت» is the same word; a classifier saved by an older version is upgraded',()=>{
+ const C=require('./compare.js'),L=require('./learning.js');
+ assert.equal(C.compare('وآتوا الزكاة','واتوا الزكات')[1].type,'correct');
+ assert.equal(C.compare('رحمة الله','رحمت الله')[0].type,'correct');
+ assert.equal(C.compare('كانت','كانه')[0].type,'changed');
+ // Never trained: takes the new weights. Trained by the user: keeps them, plus the new feature's weight.
+ assert.deepEqual(L.upgradeClassifier({weights:[0,0,0,0,0,0,0,0],n:0,correct:0}).weights,L.CLF_PRIOR);
+ const mine=L.upgradeClassifier({weights:[1,2,3,4,5,6,7,8],n:4,correct:3});assert.deepEqual(mine.weights,[1,2,3,4,5,6,7,8,L.CLF_PRIOR[8]]);assert.equal(mine.n,4);
+ assert.equal(L.mistakeFeatures({type:'changed',ops:[{op:'sub',from:'ص',to:'س'}],length:5,device:true}).length,L.CLF_PRIOR.length);
+});
+test('the most accurate on-device model uses the full-precision decoder',()=>{
+ const ctx={};vm.runInNewContext(fs.readFileSync(require.resolve('./asr.js'),'utf8'),ctx);
+ const M=ctx.DeviceASR.MODELS;assert.equal(M.best.id,M.accurate.id);assert.equal(M.best.decoder,'fp32');assert.equal(M.accurate.decoder,undefined);
+ assert.match(fs.readFileSync(require.resolve('./index.html'),'utf8'),/<option value="device-best">/);
+});

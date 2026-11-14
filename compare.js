@@ -20,7 +20,10 @@ function compare(expected,spoken){
  const ids=new Map(),id=w=>{let v=ids.get(w);if(v===undefined)ids.set(w,v=ids.size);return v;};
  const ia=na.map(id),ib=nb.map(id),memo=new Map(),joinMemo=new Map();
  const similar=(x,y)=>{const key=ia[x]*65536+ib[y];let hit=memo.get(key);if(hit===undefined){hit=distance(na[x],nb[y],Math.max(1,Math.floor(Math.max(na[x].length,nb[y].length)/2)))<=Math.max(1,Math.floor(Math.max(na[x].length,nb[y].length)/2));memo.set(key,hit);}return hit;};
- const cost=(x,y)=>ia[x]===ib[y]?0:similar(x,y)?0.6:1;
+ // Ta marbuta read on (not stopped at) sounds «ت»: speech recognition writes «الزكات» for «الزكاة». Only a Mushaf word
+ // that really ends in ة gets this, so «كانت» and «كانه» stay different.
+ const ta=a.map(w=>{const n=normalize(w);return n.endsWith('ة')?spell(n.slice(0,-1)+'ت'):null;}),same=(x,y)=>ia[x]===ib[y]||ta[x]===nb[y];
+ const cost=(x,y)=>same(x,y)?0:similar(x,y)?0.6:1;
  // Speech recognition sometimes splits one word in two (e.g. «الرَّ حِينِ»): matching two spoken tokens to one word is allowed when joining them fits it.
  const joined=nb.map((w,y)=>w+(nb[y+1]??'')),ij=joined.map(id);
  const joinCost=(x,y)=>{
@@ -36,7 +39,7 @@ function compare(expected,spoken){
  for(let i=1;i<=a.length;i++)for(let j=1;j<=b.length;j++)d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+cost(i-1,j-1),j>1?d[i-1][j-2]+joinCost(i-1,j-2):Infinity,i>1?d[i-2][j-1]+mergeCost(i-2,j-1):Infinity);
  let i=a.length,j=b.length,result=[];
  while(i||j){
-  if(i&&j&&d[i][j]===d[i-1][j-1]+cost(i-1,j-1)){result.push({type:na[i-1]===nb[j-1]?'correct':'changed',expected:a[--i],spoken:b[--j]});}
+  if(i&&j&&d[i][j]===d[i-1][j-1]+cost(i-1,j-1)){result.push({type:same(i-1,j-1)?'correct':'changed',expected:a[--i],spoken:b[--j]});}
   else if(i>1&&j&&d[i][j]===d[i-2][j-1]+mergeCost(i-2,j-1)){j--;result.push({type:'correct',expected:a[i-1],spoken:b[j]},{type:'correct',expected:a[i-2],spoken:b[j]});i-=2;}
   else if(i&&j>1&&d[i][j]===d[i-1][j-2]+joinCost(i-1,j-2)){const spokenWord=b[j-2]+' '+b[j-1];result.push({type:nb[j-2]+nb[j-1]===na[i-1]?'correct':'changed',expected:a[i-1],spoken:spokenWord});i--;j-=2;}
   else if(i&&d[i][j]===d[i-1][j]+1){result.push({type:'missing',expected:a[--i]});}

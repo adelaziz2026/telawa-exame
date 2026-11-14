@@ -2,6 +2,9 @@ const $=id=>document.getElementById(id);
 // Inside the Android/iOS app (Capacitor) there is no local server, so server-only features are hidden there.
 const NATIVE=!!globalThis.Capacitor?.isNativePlatform?.();
 if(NATIVE)document.documentElement.classList.add('native');
+// Phones: no cloud speech (it sends audio away) and no ~400 MB model. Option elements are removed, since Android's
+// picker ignores CSS on them, and a saved choice of either falls back to the accurate on-device model.
+if(NATIVE){for(const v of ['browser','device-best'])document.querySelector?.(`#engine option[value="${v}"]`)?.remove();if(['browser','device-best'].includes(load('engine',null)))save('engine','device');}
 // On free static hosting (GitHub Pages, Netlify…) there is no server either: detect it and hide the same features.
 // Only a definite 404 means static hosting: a server that is waking up (free hosting sleeps) or a slow network must not hide the meeting.
 else fetch('api/health',{cache:'no-store'}).then(r=>{if(r.status===404)document.documentElement?.classList.add('no-server');}).catch(()=>{});
@@ -36,7 +39,7 @@ function save(key,value){try{localStorage.setItem('tarteel:'+key,JSON.stringify(
 let scores=load('scores',{});
 // Which letters the reader confuses, as «expected+spoken» → count (e.g. «صس»: read س for ص). Kept on this device only.
 let letterSlips=load('letters',{});
-let brain=load('learning',null);if(brain?.weights?.length!==QuranLearning.PRIOR.length)brain=QuranLearning.createState();if(!brain.clf)brain.clf=QuranLearning.createClassifier();
+let brain=load('learning',null);if(brain?.weights?.length!==QuranLearning.PRIOR.length)brain=QuranLearning.createState();brain.clf=QuranLearning.upgradeClassifier?QuranLearning.upgradeClassifier(brain.clf):brain.clf||QuranLearning.createClassifier();
 function make(tag,className,text){const node=document.createElement(tag);node.className=className;if(text!=null)node.textContent=text;return node;}
 // Written notes, one card per mistake: quoted letters and words become highlighted chips, followed by the
 // supervised classifier's guess and two buttons that label the example and train it.
@@ -64,7 +67,7 @@ function updatePanel(){
  $('aiDl').textContent=globalThis.DeviceASR?.loaded?.(modelKind())?'نموذج Whisper محمّل ويعمل على جهازك':device?'يُحمَّل النموذج عند أول تسميع':'غير مفعّل — اختر نموذج التعلم العميق';
  $('aiMl').textContent=ayat?`${ayat} آية متتبعة · ${updates} تحديث للأوزان`:'يبدأ التعلم بعد أول مراجعة';
  $('aiRl').textContent=brain.pulls?`${brain.pulls} مكافأة من مراجعاتك`:'اضغط «اقترح آية» ليبدأ الاستكشاف';
- $('aiSl').textContent=clf.n?`${clf.n} مثال مصنّف · دقة التوقع ${Math.round(clf.correct/clf.n*100)}٪`:'صنّف ملاحظات الأخطاء لتدريبه';
+ $('aiSl').textContent=clf.n?`${clf.n} مثال مصنّف · دقة التوقع ${Math.round(clf.correct/clf.n*100)}٪`:'مدرَّب مسبقًا على أخطاء التعرف في تلاوات حقيقية · صنّف ملاحظاتك لتحسينه';
 }
 function verseKey(){return $('surah').value+':'+$('ayah').value;}
 function wordCount(){return simple[Number($('surah').value)-1].ayahs[Number($('ayah').value)-1].text.split(/\s+/).length;}
@@ -80,10 +83,10 @@ function smartPick(){
  const p=QuranLearning.recall(brain,pick.key,now,candidates.find(c=>c.key===pick.key).words);
  $('smartWhy').textContent=pick.stat?`اختارها الوكيل: احتمال التذكر ${Math.round(p*100)}٪، آخر نتيجة ${pick.stat.lastScore}٪، ${ago(now-pick.stat.last)}.`:'آية لم تراجعها بعد — الوكيل يستكشف الآيات الجديدة أولًا.';
 }
-function engine(){const v=$('engine').value;return v==='device'||v==='device-fast'?v:'browser';}
+function engine(){const v=$('engine').value;return v==='device'||v==='device-fast'||v==='device-best'?v:'browser';}
 function onDevice(){return engine()!=='browser';}
 // The accurate on-device model is the default; the fast one trades accuracy for a smaller download.
-function modelKind(){return engine()==='device-fast'?'fast':'accurate';}
+function modelKind(){const e=engine();return e==='device-fast'?'fast':e==='device-best'?'best':'accurate';}
 function updateEngine(){
  const device=onDevice(),ok=device?!!globalThis.DeviceASR?.supported():!!SpeechRecognition;
  $('record').disabled=!ok;$('modelStatus').hidden=!device;

@@ -7,6 +7,9 @@ const LIB='https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1';
 const MODELS={
  // whisper-base: fewer misheard words on quiet or noisy recordings (~160 MB).
  accurate:{id:'aaqibhabib/whisper-base-ar-quran-onnx',options:{}},
+ // The same model with its full-precision decoder: about 15% fewer misheard words on professional recitations
+ // (word error rate 8.2% vs 9.6%, measured with everyayah.com audio), and faster, but ~400 MB: for computers.
+ best:{id:'aaqibhabib/whisper-base-ar-quran-onnx',options:{},decoder:'fp32'},
  // whisper-tiny: faster and smaller (~63 MB), but mishears more.
  fast:{id:'Sharjeelbaig/whisper-tiny-ar-quran-onnx',options:{language:'arabic',task:'transcribe'}},
 };
@@ -21,7 +24,7 @@ function report(e){
 }
 function load(kind='accurate',onProgress){
  if(onProgress)progress=onProgress;
- return models[kind]??=import(LIB).then(({pipeline,env})=>{env.allowLocalModels=false;for(const k in files)delete files[k];return pipeline('automatic-speech-recognition',MODELS[kind].id,{dtype:{encoder_model:'fp32',decoder_model_merged:'q8'},device:'wasm',progress_callback:report});}).then(asr=>{ready[kind]=true;return asr;}).catch(e=>{delete models[kind];throw e;});
+ return models[kind]??=import(LIB).then(({pipeline,env})=>{env.allowLocalModels=false;for(const k in files)delete files[k];return pipeline('automatic-speech-recognition',MODELS[kind].id,{dtype:{encoder_model:'fp32',decoder_model_merged:MODELS[kind].decoder||'q8'},device:'wasm',progress_callback:report});}).then(asr=>{ready[kind]=true;return asr;}).catch(e=>{delete models[kind];throw e;});
 }
 function loaded(kind){return kind?!!ready[kind]:Object.keys(ready).length>0;}
 function supported(){return !!(scope.navigator?.mediaDevices?.getUserMedia&&scope.MediaRecorder&&scope.OfflineAudioContext);}
