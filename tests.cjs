@@ -463,7 +463,7 @@ test('assistant answers tafsir, word search, surah facts and hadith in local mod
  await h.ctx.TarteelAssistant.ask('تفسير القرطبي لسورة الكهف');assert.deepEqual(asked.at(-1),['qurtubi',18,1]);assert.match(spoken.at(-1).text,/تفسير القرطبي — سورة الكهف، الآية 1: معنى الآية هنا/);
  await h.ctx.TarteelAssistant.ask('يعني ايه الاية دي');assert.equal(asked.at(-1)[0],'muyassar');
  await h.ctx.TarteelAssistant.ask('ابحث عن كلمة الحمد');assert.match(spoken.at(-1).text,/«الحمد» جت في 114 آية/);
- await h.ctx.TarteelAssistant.ask('حديث عن انما الاعمال بالنيات');assert.match(spoken.at(-1).text,/لقيت حديث واحد فيه «انما الاعمال بالنيات». من صحيح البخاري رقم 1: إنما الأعمال بالنيات/);
+ await h.ctx.TarteelAssistant.ask('حديث عن انما الاعمال بالنيات');assert.match(spoken.at(-1).text,/لقيت حديث واحد فيه «انما الاعمال بالنيات» في البخاري ومسلم والأربعين النووية\. من صحيح البخاري رقم 1.*: إنما الأعمال بالنيات/);
 });
 test('Quran search counts occurrences, matches phrases in order, and finds an ayah from a quote',()=>{
  const S=require('./data/simple.json').data.surahs;
@@ -651,4 +651,57 @@ test('assistant answers clearly when a place does not exist or a follow-up has n
  assert.match(await say('فين الآية اللي بتقول'),/الآية بتقول إيه/);
  assert.match(await say('تفسير سورة 200'),/القرآن 114 سورة بس/);
  assert.match(await say('احكام التجويد في سورة الفاتحة آية 99'),/سورة الفاتحة فيها 7 آيات بس، فمفيش آية 99/);
+});
+// ---------- Hadith sciences, grades, recitation topics, surah names (the assistant's training set) ----------
+test('hadith-science terms are found from how people ask, with their standard definitions',()=>{
+ const cases={'يعني ايه حديث حسن':'حسن','الفرق بين الشاذ والمنكر':'منكر','الجرح والتعديل':'الجرح والتعديل','الاسناد':'الإسناد','يعني ايه السند والمتن':'المتن','ما هو الحديث المرسل':'مرسل','الحديث المعلق':'معلق','يعني ايه متفق عليه':'متفق عليه','الحديث العزيز':'عزيز','حديث غريب':'غريب','المدلس':'مدلس','المضطرب':'مضطرب','المدرج':'مدرج','الحديث المعلل':'معلل','الحسن لغيره':'حسن لغيره','الصحيح لغيره':'صحيح لغيره','الحديث المقطوع':'مقطوع','الموقوف':'موقوف','المرفوع':'مرفوع','المنقطع':'منقطع','المعضل':'معضل','مين هو التابعي':'تابعي','الضبط':'ضبط','المتصل':'متصل','الآحاد':'آحاد','ما هو الحديث القدسي':'قدسي','الحديث الموضوع':'موضوع','ما هو المتواتر':'متواتر','حسن صحيح':'حسن صحيح','الكتب الستة':'الكتب الستة'};
+ const misses=Object.entries(cases).filter(([q,want])=>!K.findMustalah(q).some(x=>x.term===want)).map(([q])=>q);
+ assert.deepEqual(misses,[]);
+ assert.match(K.MUSTALAH['صحيح'].def,/اتصل سنده.*العدل الضابط.*شذوذ ولا علة/);assert.match(K.MUSTALAH_SOURCE,/نخبة الفكر/);
+ // «حسن صحيح» is one term, not «حسن» and «صحيح».
+ assert.deepEqual(K.findMustalah('يعني ايه حسن صحيح').map(x=>x.term),['حسن صحيح']);
+});
+test('hadith grades are shown in Arabic with the scholar who gave them',()=>{
+ for(const [g,ar] of [['Sahih','صحيح'],['Hasan Sahih','حسن صحيح'],['Daif','ضعيف'],['Very Daif','ضعيف جدًا'],['Sahih Lighairihi','صحيح لغيره'],['Isnaad Hasan','إسناده حسن'],['Sanad Daif','إسناده ضعيف'],['Maudu','موضوع'],['Batil','باطل'],['Mauquf','موقوف']])assert.equal(K.gradeAr(g),ar,g);
+ assert.deepEqual(Object.keys(K.HADITH),['nawawi','bukhari','muslim','abudawud','tirmidhi','nasai','ibnmajah']);
+});
+test('the lam of «الله» and the waqf signs are read from the Mushaf',()=>{
+ const Q=require('./data/quran.json').data.surahs,j=(s,a)=>K.jalalaRules(Q[s-1].ayahs[a-1].text).map(x=>x.rule);
+ assert.deepEqual(j(1,2),['ترقيق لام لفظ الجلالة']);// لِلَّهِ
+ assert.deepEqual(j(112,2),['تفخيم لام لفظ الجلالة']);// ٱللَّهُ ٱلصَّمَدُ
+ assert.deepEqual(j(3,26).slice(0,1),['ترقيق لام لفظ الجلالة']);// قُلِ ٱللَّهُمَّ
+ assert.ok(!K.jalalaRules(Q[1].ayahs[254].text).some(x=>/لَّهُۥ/.test(x.word)));// «لَّهُۥ» (to Him) is not «الله»
+ assert.deepEqual(K.waqfSigns(Q[1].ayahs[1].text).map(w=>w.sign),['∴','∴']);// ريب ∴ فيه ∴
+ assert.equal(K.waqfSigns(Q[1].ayahs[4].text)[0].meaning,'الوصل أولى');
+ const kinds=new Set();for(const c of Q)for(const a of c.ayahs)for(const w of K.waqfSigns(a.text))kinds.add(w.sign);
+ for(const sign of ['صلى','قلى','مـ','لا','ج','∴'])assert.ok(kinds.has(sign),sign);
+});
+test('assistant: every surah opens by its name, and command words inside names do not misfire',async()=>{
+ const data={'data/quran.json':require('./data/quran.json'),'data/simple.json':require('./data/simple.json')};
+ const h=await appHarness({fetch:async u=>({ok:true,json:async()=>structuredClone(data[u])})});h.ctx.QuranKnowledge=K;assistantHarness(h,[]);
+ const C=require('./compare.js'),misses=[];
+ for(const s of data['data/quran.json'].data.surahs){
+  const name=C.normalize(s.name).replace(/^سورة /,'');
+  // Without «ال» only where people say it so («الكهف» or «كهف»); short names (الحج، الجن) are always said with it.
+  for(const f of new Set([name,name.length>5?name.replace(/^ال(?=\S)/,''):name])){h.el('surah').value='1';await h.ctx.TarteelAssistant.ask('افتح سورة '+f);if(String(h.el('surah').value)!==String(s.number))misses.push(f);}
+ }
+ assert.deepEqual(misses,[]);
+ for(const [alias,n] of [['الانشراح',94],['بني اسرائيل',17],['تبت',111],['الدهر',76]]){await h.ctx.TarteelAssistant.ask('افتح سورة '+alias);assert.equal(String(h.el('surah').value),String(n),alias);}
+});
+test('assistant answers hadith sciences, grades from the source, and recitation topics',async()=>{
+ const data={'data/quran.json':require('./data/quran.json'),'data/simple.json':require('./data/simple.json')};
+ const h=await appHarness({fetch:async u=>({ok:true,json:async()=>structuredClone(data[u])})});
+ const searched=[];h.ctx.QuranKnowledge={...K,searchHadith:async(q,o)=>{searched.push([q,o.books]);return {query:q,total:1,results:[{book:'سنن ابن ماجه',number:224,text:'طلب العلم فريضة على كل مسلم',grades:[{by:'الألباني',grade:'صحيح'}]}]};}};
+ const spoken=assistantHarness(h,[]),say=async q=>{await h.ctx.TarteelAssistant.ask(q);return spoken.at(-1).text;};
+ assert.match(await say('يعني ايه حديث حسن'),/^حسن \(مراتب القبول\): ما اتصل سنده/);
+ assert.match(await say('الفرق بين الشاذ والمنكر'),/منكر.*شاذ|شاذ.*منكر/);
+ assert.match(await say('انواع الحديث'),/أقسام الحديث في علم المصطلح/);
+ // A grade question searches the six books, and «كل مسلم» in the text is not the book «صحيح مسلم».
+ assert.match(await say('درجة حديث طلب العلم فريضة على كل مسلم'),/في الكتب الستة.*درجته: صحيح \(الألباني\)/);assert.equal(searched.at(-1)[1].length,6);
+ await say('حديث الدين النصيحة في سنن ابي داود');assert.equal(JSON.stringify(searched.at(-1)),JSON.stringify(['الدين النصيحة',['abudawud']]));
+ assert.match(await say('علامات الوقف'),/«مـ» وقف لازم/);
+ assert.match(await say('مخارج الحروف'),/الجوف.*الحلق.*اللسان.*الشفتان.*الخيشوم/);
+ assert.match(await say('السكتات عند حفص'),/عوجا/);
+ await say('افتح سورة البقرة آية 2');assert.match(await say('احكام التجويد في الآية دي'),/وعلامات الوقف: «∴» بعد/);
+ assert.equal(h.ctx.TarteelAssistant.tools.explain_hadith_term({term:'المرسل'}).terms[0].term,'مرسل');
 });

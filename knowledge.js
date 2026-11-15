@@ -16,6 +16,11 @@ const HADITH={
  nawawi:{name:'الأربعون النووية',url:'https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/editions/ara-nawawi.min.json'},
  bukhari:{name:'صحيح البخاري',url:'https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/editions/ara-bukhari.min.json'},
  muslim:{name:'صحيح مسلم',url:'https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/editions/ara-muslim.min.json'},
+ // The four Sunan, with each hadith's grade by named scholars (Al-Albani, Shu'ayb al-Arna'ut, Ahmad Shakir…).
+ abudawud:{name:'سنن أبي داود',url:'https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/editions/ara-abudawud.min.json'},
+ tirmidhi:{name:'سنن الترمذي',url:'https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/editions/ara-tirmidhi.min.json'},
+ nasai:{name:'سنن النسائي',url:'https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/editions/ara-nasai.min.json'},
+ ibnmajah:{name:'سنن ابن ماجه',url:'https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/editions/ara-ibnmajah.min.json'},
 };
 const cache=new Map();
 const fetchJson=async url=>{const r=await fetch(url,{signal:AbortSignal.timeout?.(20000)});if(!r.ok)throw Error('HTTP '+r.status);return r.json();};
@@ -139,7 +144,7 @@ function surahInfo(chapters,n){
 async function hadithBook(id,onLoading){
  const b=HADITH[id];if(!b)throw Error(`Unknown hadith book "${id}". Use: ${Object.keys(HADITH).join(', ')}`);
  const key='hadith:'+id;
- if(!cache.has(key)){onLoading?.(b.name);cache.set(key,fetchJson(b.url).then(j=>j.hadiths.filter(h=>h.text).map(h=>({number:h.hadithnumber,text:h.text,plain:plain(h.text)}))).catch(e=>{cache.delete(key);throw e;}));}
+ if(!cache.has(key)){onLoading?.(b.name);cache.set(key,fetchJson(b.url).then(j=>j.hadiths.filter(h=>h.text).map(h=>({number:h.hadithnumber,text:h.text,plain:plain(h.text),grades:gradesOf(id,h)}))).catch(e=>{cache.delete(key);throw e;}));}
  return cache.get(key);
 }
 async function searchHadith(query,{books=['nawawi','bukhari','muslim'],limit=8,onLoading}={}){
@@ -147,7 +152,7 @@ async function searchHadith(query,{books=['nawawi','bukhari','muslim'],limit=8,o
  const results=[];let total=0;
  for(const id of books){
   for(const h of await hadithBook(id,onLoading)){
-   if(words.every(w=>h.plain.includes(w))){total++;if(results.length<limit)results.push({book:HADITH[id].name,number:h.number,text:h.text.length>900?h.text.slice(0,900)+'…':h.text});}
+   if(words.every(w=>h.plain.includes(w))){total++;if(results.length<limit)results.push({book:HADITH[id].name,number:h.number,text:h.text.length>900?h.text.slice(0,900)+'…':h.text,grades:h.grades});}
   }
  }
  return {query,total,results};
@@ -176,6 +181,8 @@ const TAJWEED_RULES={
  madd_muttasil:{name:'مد واجب متصل',group:'المدود',how:'حرف مد بعده همزة في نفس الكلمة: يُمد 4 أو 5 حركات.'},
  madd_munfasil:{name:'مد جائز منفصل',group:'المدود',how:'حرف مد في آخر كلمة وهمزة في أول التالية: يُمد 4 أو 5 حركات لحفص من طريق الشاطبية.'},
  madd_lazim:{name:'مد لازم',group:'المدود',how:'حرف مد بعده سكون أصلي أو حرف مشدد: يُمد 6 حركات لزومًا.'},
+ jalala_heavy:{name:'تفخيم لام لفظ الجلالة',group:'التفخيم والترقيق',how:'لام «الله» بعد فتح أو ضم أو في أول الكلام: تُنطق مفخمة.'},
+ jalala_light:{name:'ترقيق لام لفظ الجلالة',group:'التفخيم والترقيق',how:'لام «الله» بعد كسر: تُنطق مرققة.'},
  madd_arid:{name:'مد عارض للسكون',group:'المدود',how:'الوقف على آخر الآية وقبل الحرف الأخير حرف مد: يجوز 2 أو 4 أو 6 حركات.'},
 };
 function lettersOf(text){
@@ -239,6 +246,8 @@ function tajweed(text){
  // Stopping at the end of the ayah after a long vowel.
  const e=L.length-1,p=L[e-1];
  if(p&&(p.c==='ا'&&!vowelled(p)||p.c==='و'&&!vowelled(p)&&has(L[e-2]||p,DAMMA)||p.c==='ي'&&!vowelled(p)&&has(L[e-2]||p,KASRA)||has(p,DAGGER)))add('madd_arid',e);
+ // The lam of «الله»: heavy or light.
+ for(const j of jalalaRules(text))found.push({rule:j.rule.startsWith('تفخيم')?'jalala_heavy':'jalala_light',word:j.word});
  // One entry per rule, with the words where it occurs.
  const byRule=new Map();
  for(const f of found){const r=byRule.get(f.rule)||byRule.set(f.rule,{rule:f.rule,...TAJWEED_RULES[f.rule],words:[]}).get(f.rule);if(!r.words.includes(f.word))r.words.push(f.word);}
@@ -268,6 +277,96 @@ function quranFacts(chapters){
   ],
  };
 }
-const api={TAJWEED_RULES,tajweed,quranFacts,TAFSIRS,HADITH,tafsir,paragraphs,plain,searchQuran,findAyah,surahInfo,searchHadith};
+// ---- Hadith sciences (مصطلح الحديث): the standard definitions, as in Ibn Hajar's «نخبة الفكر» and «المنظومة البيقونية» ----
+const MUSTALAH_SOURCE='تعريفات مصطلح الحديث المشهورة كما في «نخبة الفكر» لابن حجر و«المنظومة البيقونية»';
+const MUSTALAH={
+ 'صحيح':{group:'مراتب القبول',def:'ما اتصل سنده بنقل العدل الضابط عن مثله إلى منتهاه، من غير شذوذ ولا علة. شروطه خمسة: اتصال السند، وعدالة الرواة، وتمام ضبطهم، وعدم الشذوذ، وعدم العلة.'},
+ 'حسن':{group:'مراتب القبول',def:'ما اتصل سنده بنقل العدل الذي خفّ ضبطه عن مثله إلى منتهاه، من غير شذوذ ولا علة؛ فهو كالصحيح إلا أن ضبط راويه أخف. وهو مقبول يُحتج به.'},
+ 'صحيح لغيره':{group:'مراتب القبول',def:'الحسن لذاته إذا رُوي من طريق آخر مثله أو أقوى منه، فيرتقي إلى الصحيح.'},
+ 'حسن لغيره':{group:'مراتب القبول',def:'الضعيف إذا تعددت طرقه ولم يكن سبب ضعفه فسق الراوي أو كذبه، فيرتقي إلى الحسن.'},
+ 'حسن صحيح':{group:'مراتب القبول',def:'مصطلح يكثر عند الترمذي، واختُلف في معناه؛ ومن أشهر الأقوال أنه رُوي بإسنادين أحدهما حسن والآخر صحيح، أو أنه حسن باعتبار وصحيح باعتبار آخر.'},
+ 'ضعيف':{group:'المردود',def:'ما لم تجتمع فيه صفات الصحيح ولا صفات الحسن، بفقد شرط أو أكثر من شروط القبول. وتتفاوت درجاته بحسب شدة ضعف رواته.'},
+ 'موضوع':{group:'المردود',def:'الحديث المكذوب المختلق المنسوب إلى النبي ﷺ، وهو شر الضعيف وأقبحه، ولا تحل روايته لمن علم حاله إلا مع بيان وضعه.'},
+ 'متواتر':{group:'عدد الرواة',def:'ما رواه جمع كثير يستحيل في العادة تواطؤهم على الكذب، عن مثلهم من أول السند إلى منتهاه، وكان مستندهم الحس (سمعنا أو رأينا). وهو يفيد العلم اليقيني.'},
+ 'آحاد':{group:'عدد الرواة',def:'ما لم يجمع شروط المتواتر، وهو ثلاثة أقسام: المشهور والعزيز والغريب.'},
+ 'مشهور':{group:'عدد الرواة',def:'من الآحاد: ما رواه ثلاثة فأكثر في كل طبقة من طبقات السند، ولم يبلغ حد التواتر.'},
+ 'عزيز':{group:'عدد الرواة',def:'من الآحاد: ما لا يقل رواته عن اثنين في جميع طبقات السند.'},
+ 'غريب':{group:'عدد الرواة',def:'من الآحاد: ما ينفرد بروايته راوٍ واحد في طبقة من طبقات السند أو أكثر، ويسمى الفرد.'},
+ 'مرفوع':{group:'من يُنسب إليه',def:'ما أُضيف إلى النبي ﷺ من قول أو فعل أو تقرير أو صفة.'},
+ 'موقوف':{group:'من يُنسب إليه',def:'ما أُضيف إلى الصحابي من قول أو فعل.'},
+ 'مقطوع':{group:'من يُنسب إليه',def:'ما أُضيف إلى التابعي فمن دونه من قول أو فعل.'},
+ 'قدسي':{group:'من يُنسب إليه',def:'الحديث القدسي: ما أضافه النبي ﷺ إلى ربه عز وجل من غير القرآن، كقوله «قال الله تعالى…». ويفارق القرآن في أنه لا يُتعبد بتلاوته ولا يُتحدى به.'},
+ 'متصل':{group:'اتصال السند',def:'ما سمعه كل راوٍ من شيخه حتى ينتهي السند، مرفوعًا كان أو موقوفًا.'},
+ 'مرسل':{group:'السقط في السند',def:'ما رفعه التابعي إلى النبي ﷺ دون أن يذكر الصحابي الذي سمعه منه. وهو من أقسام الضعيف عند جمهور المحدثين.'},
+ 'منقطع':{group:'السقط في السند',def:'ما سقط من إسناده راوٍ أو أكثر قبل الصحابي، في موضع واحد أو أكثر لا على التوالي.'},
+ 'معضل':{group:'السقط في السند',def:'ما سقط من إسناده اثنان فأكثر على التوالي.'},
+ 'معلق':{group:'السقط في السند',def:'ما حُذف من مبدأ إسناده راوٍ فأكثر على التوالي، كقول المصنف: «قال رسول الله ﷺ» دون سند.'},
+ 'مدلس':{group:'السقط في السند',def:'ما أُخفي فيه عيب في الإسناد مع تحسين ظاهره، كأن يروي الراوي عمن لقيه ما لم يسمعه منه بصيغة توهم السماع مثل «عن» و«قال».'},
+ 'شاذ':{group:'المخالفة',def:'ما رواه الراوي المقبول مخالفًا لمن هو أولى منه (أوثق أو أكثر عددًا).'},
+ 'منكر':{group:'المخالفة',def:'ما رواه الراوي الضعيف مخالفًا لما رواه الثقة. ويقابله «المعروف».'},
+ 'معلل':{group:'المخالفة',def:'ما اطُّلع فيه على علة خفية قادحة في صحته، مع أن ظاهره السلامة منها. وعلم العلل من أدق علوم الحديث.'},
+ 'مضطرب':{group:'المخالفة',def:'ما رُوي على أوجه مختلفة متساوية في القوة، لا يمكن الجمع بينها ولا ترجيح أحدها.'},
+ 'مدرج':{group:'المخالفة',def:'ما أُدخل في متنه أو سنده ما ليس منه بلا فصل، ككلام بعض الرواة يُظن أنه من الحديث.'},
+ 'متفق عليه':{group:'مصطلحات التخريج',def:'ما أخرجه البخاري ومسلم في صحيحيهما من حديث صحابي واحد، وهو أعلى درجات الصحيح.'},
+ 'الكتب الستة':{group:'مصطلحات التخريج',def:'صحيح البخاري، وصحيح مسلم، وسنن أبي داود، وسنن الترمذي، وسنن النسائي، وسنن ابن ماجه.'},
+ 'الإسناد':{group:'أركان الحديث',def:'الإسناد (السند): سلسلة الرواة الموصلة إلى المتن، كقول البخاري: «حدثنا الحميدي قال حدثنا سفيان…». والإسناد من خصائص هذه الأمة، قال ابن المبارك: «الإسناد من الدين».'},
+ 'المتن':{group:'أركان الحديث',def:'المتن: ما ينتهي إليه السند من الكلام، أي نص الحديث نفسه.'},
+ 'الجرح والتعديل':{group:'علوم الرواة',def:'علم يبحث في أحوال الرواة من حيث قبول روايتهم أو ردها؛ فالجرح الطعن في عدالة الراوي أو ضبطه، والتعديل وصفه بما تُقبل به روايته.'},
+ 'عدالة':{group:'علوم الرواة',def:'العدل: المسلم البالغ العاقل السالم من أسباب الفسق وخوارم المروءة.'},
+ 'ضبط':{group:'علوم الرواة',def:'الضبط: أن يحفظ الراوي ما سمعه ويؤديه كما سمعه، إما ضبط صدر (حفظ) أو ضبط كتاب.'},
+ 'صحابي':{group:'علوم الرواة',def:'من لقي النبي ﷺ مؤمنًا به ومات على الإسلام.'},
+ 'تابعي':{group:'علوم الرواة',def:'من لقي الصحابي مؤمنًا بالنبي ﷺ ومات على الإسلام.'},
+};
+// The grades in the hadith editions are in English; shown in Arabic, with the scholar's name.
+const GRADE_AR=[[/^very da'?i?f isnaa?d/i,'إسناده ضعيف جدًا'],[/^very da'?i?f/i,'ضعيف جدًا'],[/^sanad da'?i?f/i,'إسناده ضعيف'],[/^isnaa?d ma'?lool/i,'إسناده معلول'],[/^maqtu/i,'مقطوع'],[/^mau?quf/i,'موقوف'],[/^mursal/i,'مرسل'],[/^batil/i,'باطل'],[/^sahih lighairihi/i,'صحيح لغيره'],[/^hasan lighairihi/i,'حسن لغيره'],[/^hasan sahih/i,'حسن صحيح'],[/^isnaa?d sahih/i,'إسناده صحيح'],[/^isnaa?d hasan/i,'إسناده حسن'],[/^isnaa?d (da'?if|daeef|dai?f)/i,'إسناده ضعيف'],[/^(da'?if|daeef|dai?f) jiddan/i,'ضعيف جدًا'],[/^sahih/i,'صحيح'],[/^hasan/i,'حسن'],[/^(da'?if|daeef|dai?f)/i,'ضعيف'],[/^(maud?u|mawdu|fabricated)/i,'موضوع'],[/^munkar/i,'منكر'],[/^shadh/i,'شاذ']];
+const SCHOLAR_AR={'Al-Albani':'الألباني','Shuaib Al Arnaut':'شعيب الأرناؤوط','Ahmad Muhammad Shakir':'أحمد شاكر','Zubair Ali Zai':'زبير علي زئي','Muhammad Muhyi Al-Din Abdul Hamid':'محمد محيي الدين عبد الحميد','Darussalam':'دار السلام','Bashar Awad Maarouf':'بشار عواد معروف','Abu Ghuddah':'عبد الفتاح أبو غدة','Muhammad Fouad Abd al-Baqi':'محمد فؤاد عبد الباقي'};
+const gradeAr=g=>{const t=String(g||'').trim(),hit=GRADE_AR.find(([re])=>re.test(t));return hit?hit[1]:t;};
+function gradesOf(book,h){
+ if(book==='bukhari'||book==='muslim')return [{by:book==='bukhari'?'رواه البخاري في صحيحه':'رواه مسلم في صحيحه',grade:'صحيح'}];
+ return (h.grades||[]).filter(g=>g&&g.grade&&g.grade.trim()!=='-').map(g=>({by:SCHOLAR_AR[g.name]||g.name,grade:gradeAr(g.grade)}));
+}
+// A term from the user's words: «يعني ايه حديث حسن»، «الحديث المرسل»، «الفرق بين الشاذ والمنكر».
+function findMustalah(query){
+ // Word by word, without «و» and «ال» in front: «والمنكر» is «منكر». Longer terms first («حسن صحيح» before «حسن»).
+ const words=t=>plain(t).split(' ').map(w=>w.replace(/^و(?=ال..)/,'').replace(/^ال(?=..)/,'')).filter(Boolean);
+ const q=words(query),used=new Set(),hits=[];
+ for(const k of Object.keys(MUSTALAH).sort((a,b)=>words(b).length-words(a).length||b.length-a.length)){
+  const p=words(k);
+  for(let i=0;i+p.length<=q.length;i++)if(p.every((w,j)=>q[i+j]===w&&!used.has(i+j))){hits.push(k);p.forEach((_,j)=>used.add(i+j));break;}
+ }
+ return hits.map(k=>({term:k,...MUSTALAH[k]}));
+}
+
+// ---- Recitation: makharij, sifat, waqf signs, and the lam of «الله» ----
+const RECITATION_TOPICS={
+ 'المخارج':{group:'مخارج الحروف',how:'مخارج الحروف خمسة مواضع عامة: الجوف (حروف المد)، والحلق (ء هـ ع ح غ خ)، واللسان (أكثر الحروف)، والشفتان (ف ب م و)، والخيشوم (الغنة). وعددها التفصيلي سبعة عشر مخرجًا على المختار عند ابن الجزري.'},
+ 'الصفات':{group:'صفات الحروف',how:'من أشهر الصفات: الجهر والهمس (حروف الهمس: «فحثه شخص سكت»)، والشدة والرخاوة (حروف الشدة: «أجد قط بكت»)، والاستعلاء والاستفال (حروف الاستعلاء: «خص ضغط قظ»)، والإطباق (ص ض ط ظ)، والقلقلة («قطب جد»)، والصفير (ص ز س).'},
+ 'التفخيم والترقيق':{group:'صفات الحروف',how:'حروف الاستعلاء السبعة «خص ضغط قظ» مفخمة دائمًا، وأقواها حروف الإطباق (ص ض ط ظ). وتُفخم لام لفظ الجلالة بعد فتح أو ضم وتُرقق بعد كسر، وتُفخم الراء غالبًا إذا كانت مفتوحة أو مضمومة وتُرقق إذا كانت مكسورة.'},
+ 'لام لفظ الجلالة':{group:'التفخيم والترقيق',how:'لام «الله» تُفخم إذا سبقها فتح أو ضم (قالَ اللهُ، رسولُ اللهِ) أو ابتُدئ بها، وتُرقق إذا سبقها كسر (بِسمِ اللهِ، لِلَّهِ).'},
+ 'علامات الوقف':{group:'الوقف والابتداء',how:'في مصحف المدينة: «مـ» وقف لازم، و«لا» لا تقف (الوقف ممنوع)، و«ج» وقف جائز يستوي فيه الوقف والوصل، و«صلى» الوصل أولى، و«قلى» الوقف أولى، و«∴» تعانق الوقف: إذا وقفت على أحد الموضعين فلا تقف على الآخر.'},
+ 'السكتة':{group:'الوقف والابتداء',how:'السكت: قطع الصوت زمنًا يسيرًا دون تنفس بنية الاستئناف، وعند حفص أربع سكتات واجبة من طريق الشاطبية: «عوجا ۜ قيما» (الكهف)، «مرقدنا ۜ هذا» (يس)، «من ۜ راق» (القيامة)، «بل ۜ ران» (المطففين).'},
+};
+// Waqf signs in the Uthmani text (small high letters) and what each means.
+const WAQF_SIGNS={[mk(0x6d6)]:{sign:'صلى',meaning:'الوصل أولى'},[mk(0x6d7)]:{sign:'قلى',meaning:'الوقف أولى'},[mk(0x6d8)]:{sign:'مـ',meaning:'وقف لازم'},[mk(0x6d9)]:{sign:'لا',meaning:'لا تقف'},[mk(0x6da)]:{sign:'ج',meaning:'وقف جائز'},[mk(0x6db)]:{sign:'∴',meaning:'تعانق الوقف'},[mk(0x6dc)]:{sign:'س',meaning:'سكتة لطيفة بلا تنفس'}};
+function waqfSigns(text){
+ const out=[];const words=text.split(/\s+/);let prev='';
+ for(const w of words){for(const c of w)if(WAQF_SIGNS[c])out.push({...WAQF_SIGNS[c],after:prev||w});if([...w].some(c=>!isMark(c)))prev=w;}
+ return out;
+}
+// The lam of «الله»: heavy (tafkhim) after a fatha or damma or at the start, light (tarqiq) after a kasra.
+function jalalaRules(text){
+ const L=lettersOf(text),out=[];
+ for(let i=0;i<L.length;i++){
+  const l=L[i];if(l.c!=='ل'||!has(l,SHADDA)||L[i+1]?.c!=='ه')continue;
+  // «الله» / «لله» / «اللهم»: the doubled lam then ه, with only «ال» or «ل» (and a prefix letter) before it in the word.
+  // «الله» is written with two lams (ٱللَّه، لِلَّه); «لَّهُۥ» (to Him) has one, doubled by idgham, and is not it.
+  if(L[i-1]?.c!=='ل'||L[i-1].word!==l.word)continue;
+  let k=i-1;while(k>=0&&(L[k].c==='ٱ'||(L[k].c==='ل'&&!vowelled(L[k]))||has(L[k],SILENT)||(L[k].c==='ا'&&!L[k].marks)))k--;
+  const heavy=k<0||!(has(L[k],KASRA)||has(L[k],TANWEEN[2]));
+  out.push({rule:heavy?'تفخيم لام لفظ الجلالة':'ترقيق لام لفظ الجلالة',word:text.split(/\s+/).filter(w=>[...w].some(c=>!isMark(c)))[l.word]});
+ }
+ return out;
+}
+const api={MUSTALAH,MUSTALAH_SOURCE,findMustalah,RECITATION_TOPICS,waqfSigns,jalalaRules,gradeAr,TAJWEED_RULES,tajweed,quranFacts,TAFSIRS,HADITH,tafsir,paragraphs,plain,searchQuran,findAyah,surahInfo,searchHadith};
 if(typeof module!=='undefined')module.exports=api;else scope.QuranKnowledge=api;
 })(globalThis);

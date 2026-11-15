@@ -389,6 +389,9 @@ async function showTafsir(){
  if(tafsirSource==='tajweed'&&QuranKnowledge.tajweed){
   const rules=QuranKnowledge.tajweed(surahs[s-1].ayahs[a-1].text);
   $('tafsirBody').replaceChildren(...(rules.length?rules.map(r=>{const d=make('div','tajweed-rule');const top=make('p','');top.append(make('strong','',r.name),make('span','tajweed-words',' — '+r.words.join('، ')));d.append(top,make('p','tajweed-how',r.how));return d;}):[make('p','tafsir-loading','لا توجد أحكام نون أو ميم أو مدود أو قلقلة ظاهرة في هذه الآية.')]));
+  // The waqf signs in this ayah, with what each one tells the reader.
+  const signs=QuranKnowledge.waqfSigns?.(surahs[s-1].ayahs[a-1].text)||[];
+  if(signs.length){const d=make('div','tajweed-rule');const top=make('p','');top.append(make('strong','','علامات الوقف'),make('span','tajweed-words',' — '+signs.map(w=>`«${w.sign}» بعد «${w.after}»: ${w.meaning}`).join('، ')));d.append(top);$('tafsirBody').append(d);}
   $('tafsirSource').textContent='أحكام التجويد لرواية حفص عن عاصم، مستخرجة آليًا من رسم المصحف. للتعلم المتقن راجع معلّمًا.';
   return;
  }

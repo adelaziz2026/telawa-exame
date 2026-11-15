@@ -70,16 +70,23 @@ const tools={
   return {query:r.query,exact_match:r.exact,total:r.total,results:r.results.map(x=>({...uthmani(x),...(x.match?{words_matched_percent:x.match}:{})}))};
  },
  get_surah_info({surah}){if(loading)throw Error('The Mushaf is still loading.');return QuranKnowledge.surahInfo(surahs,surah);},
- search_hadith({query,book}){return QuranKnowledge.searchHadith(query,{books:!book||book==='all'?undefined:[book],onLoading:name=>chip(`تحميل ${name} لأول مرة… قد يستغرق لحظات`)});},
+ // «all»: the two Sahihs and al-Nawawi's Forty; «six»: the six books, with grades for the Sunan by named scholars.
+ search_hadith({query,book}){const books=!book||book==='all'?undefined:book==='six'?['bukhari','muslim','abudawud','tirmidhi','nasai','ibnmajah']:[book];return QuranKnowledge.searchHadith(query,{books,onLoading:name=>chip(`تحميل ${name} لأول مرة… قد يستغرق لحظات`)});},
+ explain_hadith_term({term}){
+  const hits=QuranKnowledge.findMustalah(term);
+  return {source:QuranKnowledge.MUSTALAH_SOURCE,matched:hits.length>0,terms:(hits.length?hits:Object.entries(QuranKnowledge.MUSTALAH).map(([k,v])=>({term:k,...v}))).map(x=>({term:x.term,group:x.group,definition:x.def}))};
+ },
  // Tajweed rules in an ayah (Hafs), found from the Uthmani text on the device.
  get_tajweed({surah,ayah}){
   checkAyah(surah,ayah);
-  return {surah,surah_name:surahName(surah),ayah,riwaya:'حفص عن عاصم',rules:QuranKnowledge.tajweed(surahs[surah-1].ayahs[ayah-1].text).map(r=>({rule:r.name,group:r.group,words:r.words,how_to_read:r.how}))};
+  const text=surahs[surah-1].ayahs[ayah-1].text;
+  return {surah,surah_name:surahName(surah),ayah,riwaya:'حفص عن عاصم',rules:QuranKnowledge.tajweed(text).map(r=>({rule:r.name,group:r.group,words:r.words,how_to_read:r.how})),waqf_signs:QuranKnowledge.waqfSigns(text).map(w=>({sign:w.sign,meaning:w.meaning,after_word:w.after}))};
  },
  explain_tajweed_rule({rule}){
   // Word by word, without «ال» and words like «أنواع/أحكام»: «انواع المد» → every madd, «النون الساكنة» → its four rules.
   const words=w=>norm(w).split(' ').map(x=>x.replace(/^و?ال(?=..)/,'')).filter(x=>x.length>1&&!/^(انواع|نوع|احكام|حكم|اشرح|اشرحلي|يعني|ايه|ما|هو|هي|معني)$/.test(x));
-  const k=words(rule),all=Object.values(QuranKnowledge.TAJWEED_RULES);
+  // The rules found in ayat, and the recitation topics (makharij, sifat, waqf signs, sakt, the lam of «الله»).
+  const k=words(rule),all=[...Object.values(QuranKnowledge.TAJWEED_RULES),...Object.entries(QuranKnowledge.RECITATION_TOPICS).map(([name,v])=>({name,...v}))];
   const hits=k.length?all.filter(r=>{const own=words(r.name+' '+r.group);return k.every(x=>own.some(o=>o===x||o.startsWith(x)));}):[];
   return {rules:(hits.length?hits:all).map(r=>({rule:r.name,group:r.group,how_to_read:r.how})),matched:hits.length>0};
  },
@@ -92,7 +99,7 @@ const tools={
  },
 };
 // A short Arabic label shown in the chat for each action.
-const actionLabel={get_tajweed:'أحكام التجويد',explain_tajweed_rule:'شرح حكم التجويد',get_quran_facts:'علوم القرآن',get_tafsir:'قراءة التفسير',search_quran:'البحث في المصحف',find_ayah:'البحث عن الآية',get_surah_info:'معلومات السورة',search_hadith:'البحث في كتب السنة',get_app_state:'قراءة حالة التطبيق',go_to_ayah:'فتح الآية',get_ayah_text:'قراءة نص الآية من المصحف',play_recitation:'تشغيل التلاوة',set_ayah_hidden:'إخفاء/إظهار الآية',get_progress:'قراءة تقدمك'};
+const actionLabel={explain_hadith_term:'مصطلح الحديث',get_tajweed:'أحكام التجويد',explain_tajweed_rule:'شرح حكم التجويد',get_quran_facts:'علوم القرآن',get_tafsir:'قراءة التفسير',search_quran:'البحث في المصحف',find_ayah:'البحث عن الآية',get_surah_info:'معلومات السورة',search_hadith:'البحث في كتب السنة',get_app_state:'قراءة حالة التطبيق',go_to_ayah:'فتح الآية',get_ayah_text:'قراءة نص الآية من المصحف',play_recitation:'تشغيل التلاوة',set_ayah_hidden:'إخفاء/إظهار الآية',get_progress:'قراءة تقدمك'};
 
 // ---------- Chat log ----------
 function bubble(role,text){
@@ -158,7 +165,10 @@ function namesOf(s){
  for(const f of [...forms])if(f.startsWith('ال')&&f.length>4)forms.add(f.slice(2));
  return [...forms];
 }
+// Other names surahs are known by, recognised after «سورة» («سورة الانشراح»، «سورة بني إسرائيل»).
+const SURAH_ALIASES={'الانشراح':94,'الم نشرح':94,'بني اسرائيل':17,'الاسراء':17,'براءه':9,'المؤمن':40,'حم السجده':41,'الدهر':76,'هل اتي':76,'القتال':47,'تبت':111,'اللهب':111,'عم':78,'عم يتساءلون':78,'التوحيد':112,'ام الكتاب':1,'السبع المثاني':1,'الملائكه':35,'الشريعه':45,'المجادله':58,'التطفيف':83,'قريش':106,'لايلاف قريش':106};
 function findSurahIn(t){
+ for(const [alias,n] of Object.entries(SURAH_ALIASES).sort((a,b)=>b[0].length-a[0].length))if(new RegExp(`سوره ${alias}(?: |$)`).test(t))return n;
  const byNumber=t.match(/سوره (?:رقم )?(\d+)/);if(byNumber&&+byNumber[1]>=1&&+byNumber[1]<=114)return +byNumber[1];
  surahNames??=surahs.map(s=>({n:s.number,forms:namesOf(s)}));
  let best=null;
@@ -244,9 +254,10 @@ async function knowledgeTurn(t,raw=t){
   if(n){const r=lastResults[n-1];if(!r)return `عندي ${lastResults.length} نتايج بس.`;const out=act('go_to_ayah',{surah:r.surah,ayah:r.ayah,to_ayah:null});return `فتحتلك ${out.opened}.`;}
  }
  // Tajweed: a rule explained («يعني ايه الإخفاء؟»، «اشرحلي القلقلة»، «احكام النون الساكنة»).
- const RULE_WORDS=/(اخفاء|ادغام|اقلاب|اظهار|قلقله|غنه|مد (?:متصل|منفصل|لازم|عارض|واجب|جائز)|المدود|انواع المد|لام شمسيه|لام قمريه|اللام الشمسيه|اللام القمريه|النون الساكنه|التنوين|الميم الساكنه)/;
+ const RULE_WORDS=/(اخفاء|ادغام|اقلاب|اظهار|قلقله|غنه|مد (?:متصل|منفصل|لازم|عارض|واجب|جائز)|المدود|انواع المد|لام شمسيه|لام قمريه|اللام الشمسيه|اللام القمريه|النون الساكنه|التنوين|الميم الساكنه|مخارج|المخارج|صفات الحروف|الصفات|علامات الوقف|تفخيم|ترقيق|التفخيم والترقيق|السكت|سكتات|لفظ الجلاله)/;
  if(RULE_WORDS.test(t)&&!/(الايه|ايه \d|سوره)/.test(t.replace(/^(?:يعني )?ايه /,''))){
-  const r=tools.explain_tajweed_rule({rule:t.match(RULE_WORDS)[1].replace(/^ال(?=نون|ميم|مد|لام)/,'')});chip(actionLabel.explain_tajweed_rule);
+  const asked=t.match(RULE_WORDS)[1],topic={'مخارج':'المخارج','صفات الحروف':'الصفات','تفخيم':'التفخيم والترقيق','ترقيق':'التفخيم والترقيق','سكتات':'السكتة','السكت':'السكتة','لفظ الجلاله':'لام لفظ الجلالة'}[asked]||asked;
+  const r=tools.explain_tajweed_rule({rule:topic.replace(/^ال(?=نون|ميم|مد|لام)/,'')});chip(actionLabel.explain_tajweed_rule);
   return r.rules.slice(0,5).map(x=>`**${x.rule}** (${x.group}): ${x.how_to_read}`).join(' ');
  }
  // Tajweed of an ayah («احكام التجويد في الآية دي»، «تجويد آية الكرسي»): shown in the chat and in the panel's tab.
@@ -254,7 +265,8 @@ async function knowledgeTurn(t,raw=t){
   const {surah,ayah}=where(),r=tools.get_tajweed({surah,ayah});chip(actionLabel.get_tajweed);
   if(Number($('surah').value)===surah&&rangeNumbers()[0]===ayah){const box=$('tafsirBox');if(box){box.open=true;box.querySelector?.('[data-src="tajweed"]')?.click();}}
   if(!r.rules.length)return `مفيش أحكام نون أو ميم أو مدود أو قلقلة ظاهرة في ${nameOf(surah)}، الآية ${ayah}.`;
-  return `أحكام التجويد في ${nameOf(surah)}، الآية ${ayah} (رواية حفص): `+r.rules.map(x=>`**${x.rule}** في «${x.words.slice(0,3).join('، ')}»`).join('، ')+'. اسألني «يعني ايه الإخفاء» مثلًا عشان أشرحلك أي حكم.';
+  const signs=r.waqf_signs.length?' وعلامات الوقف: '+r.waqf_signs.map(w=>`«${w.sign}» بعد «${w.after_word}» (${w.meaning})`).join('، ')+'.':'';
+  return `أحكام التجويد في ${nameOf(surah)}، الآية ${ayah} (رواية حفص): `+r.rules.map(x=>`**${x.rule}** في «${x.words.slice(0,3).join('، ')}»`).join('، ')+'.'+signs+' اسألني «يعني ايه الإخفاء» مثلًا عشان أشرحلك أي حكم.';
  }
  // Quran sciences: counts from this Mushaf, and a few well-established facts.
  const FACTS=[
@@ -273,8 +285,18 @@ async function knowledgeTurn(t,raw=t){
   const all=tools.get_quran_facts();chip(actionLabel.get_quran_facts);
   return fact?fact[1](all.counted_from_this_mushaf):all.classical[old[1]];
  }
+ // Hadith sciences (before tafsir: «يعني ايه حديث حسن» is a term, not a word to look up): «يعني ايه حديث حسن»، «الفرق بين الشاذ والمنكر»، «انواع الحديث»، «الجرح والتعديل».
+ if(/(انواع الحديث|اقسام الحديث|درجات الحديث|مصطلح الحديث|علوم الحديث)/.test(t)){
+  chip(actionLabel.explain_hadith_term);const groups={};for(const [k,v] of Object.entries(QuranKnowledge.MUSTALAH))(groups[v.group]??=[]).push(k);
+  return 'أقسام الحديث في علم المصطلح: '+Object.entries(groups).map(([g,ks])=>`**${g}**: ${ks.join('، ')}`).join('. ')+'. اسألني عن أي واحد، مثلًا «يعني ايه حديث مرسل».';
+ }
+ const terms=/(يعني ايه|ما هو|ما هي|ايه هو|ايه هي|تعريف|عرف|الفرق بين|الحديث ال|حديث (?:صحيح|حسن|ضعيف|موضوع|مرسل|قدسي|متواتر|غريب|عزيز|مشهور)$|مين هو|مين هم|الجرح والتعديل|الكتب السته|متفق عليه)/.test(t)?QuranKnowledge.findMustalah(t):[];
+ if(terms.length&&!/(في|فيه|عن) .+ (?:في|من) (?:البخاري|مسلم|سنن)/.test(t)){
+  const r=tools.explain_hadith_term({term:t});chip(actionLabel.explain_hadith_term);
+  return r.terms.slice(0,3).map(x=>`**${x.term}** (${x.group}): ${x.definition}`).join(' ')+` (المصدر: ${r.source}.)`;
+ }
  // «معني» only as a whole word: it is also inside «سمعني» (play it for me).
- const wantsTafsir=/(تفسير|فسر|(?:^| )معني(?: |$)|يعني ايه|شرح|سبب نزول|سبب النزول)/.test(t);
+ const wantsTafsir=/(تفسير|فسر|(?:^| )معني(?: |$)|يعني ايه|(?:^| )(?:اشرح|اشرحلي|شرح)(?: |$)|سبب نزول|سبب النزول)/.test(t);
  // 2. An ayah quoted from memory: find it, and explain it if asked.
  if(/(?:الايه|ايه|اللي)(?: اللي)? (?:بتقول|بيقول|تقول|فيها)$/.test(t))return 'الآية بتقول إيه؟ قول جزء منها، مثلًا: «فين الآية اللي بتقول وجعلنا من الماء كل شيء حي».';
  const quote=quoteIn(t,raw);
@@ -303,16 +325,22 @@ async function knowledgeTurn(t,raw=t){
   const i=tools.get_surah_info({surah:findSurahIn(t)||Number($('surah').value)});chip(actionLabel.get_surah_info);
   return `${QuranCompare.normalize(i.name)} ${i.revelation}، عدد آياتها ${i.ayat} وكلماتها ${i.words}، في الجزء ${i.juz.join(' و')}${i.pages?` من صفحة ${i.pages[0]} لـ ${i.pages[1]}`:''}${i.sajda_ayat.length?`، وفيها سجدة في الآية ${i.sajda_ayat.join(' و')}`:''}.`;
  }
- // 6. Hadith.
+ // 7. Hadith search, with grades: «حديث عن النية»، «درجة حديث …»، «حديث … في سنن أبي داود»، «في الكتب الستة».
  if(/(حديث|احاديث|السنه|قال النبي|قال الرسول)/.test(t)){
-  const query=shown(after(/(?:حديث|احاديث|السنه)(?: عن| في| فيه| بيقول)? (.+)$/));
+  const src=n=>new RegExp(`(?:في|من|عند|رواه|اخرجه|عن) (?:صحيح |سنن |كتاب )?(?:${n})(?: |$)`);
+  const BOOKS=[[src('ابي داود|ابو داود'),'abudawud'],[src('الترمذي'),'tirmidhi'],[src('النسائي'),'nasai'],[src('ابن ماجه'),'ibnmajah'],[src('البخاري'),'bukhari'],[src('مسلم'),'muslim'],[src('النوويه|الاربعين النوويه|الاربعين'),'nawawi'],[src('الكتب السته|السنن'),'six']];
+  const grading=/(درجه|صحه|هل .*صحيح|صحيح ولا|ضعيف ولا|مكذوب|موضوع ولا)/.test(t),book=BOOKS.find(([re])=>re.test(t))?.[1]||(grading?'six':'all');
+  const query=shown(after(/(?:حديث|احاديث|السنه)(?: عن| في| فيه| بيقول)? (.+)$/).replace(/ (?:في|من|عند|رواه) (?:سنن|صحيح|كتب|الكتب|البخاري|مسلم|الاربعين|ابي داود|الترمذي|النسائي|ابن ماجه).*$/,'').replace(/ (?:صحيح|ضعيف) (?:ولا|او) .*$/,'').trim());
   if(!query)return 'قوللي الحديث عن إيه؟ مثلًا: «حديث عن النية» أو «حديث فيه إنما الأعمال بالنيات».';
-  const r=await tools.search_hadith({query,book:'all'});chip(actionLabel.search_hadith);
-  if(!r.total)return `مالقيتش حديث فيه «${query}» في البخاري ومسلم والأربعين النووية. جرّب كلمات تانية من نص الحديث.`;
-  const h=r.results[0];return `لقيت ${count(r.total,'حديث واحد','حديثين','أحاديث','حديث')} فيه «${query}». ${r.total>1?'أولهم ':''}من ${h.book} رقم ${h.number}: ${h.text}`;
+  const r=await tools.search_hadith({query,book});chip(actionLabel.search_hadith);
+  const where=book==='all'?'البخاري ومسلم والأربعين النووية':book==='six'?'الكتب الستة':QuranKnowledge.HADITH[book].name;
+  if(!r.total)return `مالقيتش حديث فيه «${query}» في ${where}. جرّب كلمات تانية من نص الحديث${book==='all'?'، أو قول «في الكتب الستة»':''}.`;
+  // The grade comes from the source (the Sahihs, or named scholars for the Sunan), never guessed.
+  const h=r.results[0],grade=h.grades?.length?' — درجته: '+h.grades.slice(0,3).map(g=>`${g.grade} (${g.by})`).join('، '):' (الدرجة غير مذكورة في المصدر)';
+  return `لقيت ${count(r.total,'حديث واحد','حديثين','أحاديث','حديث')} فيه «${query}» في ${where}. ${r.total>1?'أولهم ':''}من ${h.book} رقم ${h.number}${grade}: ${h.text}`;
  }
  // 7. Word search, in the whole Mushaf or one surah, with how many times it comes.
- if(/(ابحث|دور|فين|كام مره|عدد مرات|وردت|اتذكرت|اتكررت|جت كلمه)/.test(t)){
+ if(/(ابحث|(?:^| )(?:دور|دورلي)(?: |$)|(?:^| )فين(?: |$)|كام مره|عدد مرات|وردت|اتذكرت|اتكررت|جت كلمه)/.test(t)){
   const inPart=t.match(/ (?:في|فى) (سوره .+)$/),surah=inPart?findSurahIn(inPart[1]):null;
   let query=((t.match(/(?:كلمه|لفظ|لفظه) (.+)$/)||t.match(/(?:ابحث|دور|ابحثلي|دورلي)(?: عن| علي)? (.+)$/)||t.match(/(?:فين|كام مره|عدد مرات)(?: (?:اتذكرت|وردت|جت|ذكرت|اتكررت))? (.+)$/))?.[1]||'')
    .replace(/ (?:في|فى) (?:سوره|القران|المصحف).*$/,'').replace(/ (?:اتذكرت|وردت|جت|ذكرت|اتكررت|موجوده|كام مره).*$/,'').replace(/^(?:جزء من |اي )?(?:كلمه|لفظ|لفظه) /,'').trim();
