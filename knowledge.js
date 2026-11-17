@@ -67,13 +67,16 @@ function countHits(tokens,text,words,{partial,phrase}){
 }
 // Each ayah's normalised text, worked out once (searches run over all 6,236 ayat).
 const plainOf=new WeakMap(),plainAyah=a=>{let t=plainOf.get(a);if(t===undefined)plainOf.set(a,t=plain(a.text));return t;};
+// For word search only: the alif that just carries tanween fath is dropped, so «مِصْرًا» is found as «مصر» while a
+// real alif («تَابَا») stays. Quotes keep plainAyah, since people say and type that alif («إن مع العسر يسرا»).
+const bareOf=new WeakMap(),searchText=a=>{let t=bareOf.get(a);if(t===undefined)bareOf.set(a,t=plain(String(a.text).replace(/ًا|اً/g,'')));return t;};
 function searchQuran(chapters,query,{surah=null,limit=20,partial=false,phrase=false}={}){
  const q=plain(query);if(!q)return {query,total:0,occurrences:0,results:[]};
  const words=formsOf(q),results=[];let total=0,occurrences=0;
  for(const c of chapters){
   if(surah&&c.number!==surah)continue;
   for(const a of c.ayahs){
-   const text=plainAyah(a),n=countHits(text.split(' '),text,words,{partial,phrase});
+   const text=plainAyah(a),bare=searchText(a),n=Math.max(countHits(text.split(' '),text,words,{partial,phrase}),bare===text?0:countHits(bare.split(' '),bare,words,{partial,phrase}));
    if(n){total++;occurrences+=n;if(results.length<limit)results.push({surah:c.number,surah_name:c.name,ayah:a.numberInSurah,text:a.text});}
   }
  }
@@ -367,6 +370,33 @@ function jalalaRules(text){
  }
  return out;
 }
-const api={MUSTALAH,MUSTALAH_SOURCE,findMustalah,RECITATION_TOPICS,waqfSigns,jalalaRules,gradeAr,TAJWEED_RULES,tajweed,quranFacts,TAFSIRS,HADITH,tafsir,paragraphs,plain,searchQuran,findAyah,surahInfo,searchHadith};
+// ---- Surah names that were misheard or misspelled («الفتحه» for الفاتحة, «الفاتح» for الفتح) ----
+// Edit distance where adding or dropping a long vowel (ا و ي) costs half: speech recognition often drops or adds them,
+// so «الفتحه» is nearer الفاتحه (a dropped ا) than الفتح (an added ه).
+function nameDistance(a,b){
+ const soft=c=>'اوي'.includes(c)?0.5:1;let prev=[0];for(let j=1;j<=b.length;j++)prev[j]=prev[j-1]+soft(b[j-1]);
+ for(let i=1;i<=a.length;i++){const row=[prev[0]+soft(a[i-1])];for(let j=1;j<=b.length;j++)row[j]=Math.min(prev[j]+soft(a[i-1]),row[j-1]+soft(b[j-1]),prev[j-1]+(a[i-1]===b[j-1]?0:1));prev=row;}
+ return prev[b.length];
+}
+const surahForms=new WeakMap();
+function formsOfSurahs(chapters){
+ let f=surahForms.get(chapters);if(f)return f;f=[];
+ for(const c of chapters){const raw=String(c.name).normalize('NFKC');for(const v of new Set([plain(raw),plain(raw.replace(/ٰ/g,'ا'))])){const n=v.replace(/^سوره /,'');f.push({n:c.number,form:n});if(n.startsWith('ال')&&n.length>4)f.push({n:c.number,form:n.slice(2)});}}
+ surahForms.set(chapters,f);return f;
+}
+// The surah whose name is exactly the word, or failing that the nearest within about one letter; null if none is
+// close enough or two different surahs are equally close (then it is better to ask than to guess).
+function closestSurah(chapters,word){
+ const w=plain(word).replace(/^سوره /,'');if(w.length<3)return null;
+ let best=null,second=Infinity;
+ for(const {n,form}of formsOfSurahs(chapters)){
+  if(form===w)return n;if(form.length<4)continue;
+  const d=nameDistance(w,form);
+  if(!best||d<best.d){if(best&&best.n!==n)second=best.d;best={n,d};}else if(n!==best.n&&d<second)second=d;
+ }
+ const limit=w.length>=7?1.5:1;
+ return best&&best.d<=limit&&second>best.d?best.n:null;
+}
+const api={closestSurah,MUSTALAH,MUSTALAH_SOURCE,findMustalah,RECITATION_TOPICS,waqfSigns,jalalaRules,gradeAr,TAJWEED_RULES,tajweed,quranFacts,TAFSIRS,HADITH,tafsir,paragraphs,plain,searchQuran,findAyah,surahInfo,searchHadith};
 if(typeof module!=='undefined')module.exports=api;else scope.QuranKnowledge=api;
 })(globalThis);

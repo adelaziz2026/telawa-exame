@@ -430,7 +430,7 @@ test('Quran word search matches whole words with attached prefixes, or any part 
  const S=require('./data/simple.json').data.surahs;
  const sabr=K.searchQuran(S,'الصبر');assert.ok(sabr.total>=5);assert.ok(sabr.results.some(r=>r.surah===2&&r.ayah===45));
  assert.ok(K.searchQuran(S,'كتاب').total>K.searchQuran(S,'كتاب',{surah:2}).total);
- assert.ok(K.searchQuran(S,'تاب').results.every(r=>K.plain(r.text).split(' ').some(w=>/^(و|ف|ب|ل|ك|ال)*تاب$/.test(w))));
+ assert.ok(K.searchQuran(S,'تاب').results.every(r=>K.plain(r.text.replace(/ًا|اً/g,'')).split(' ').some(w=>/^(و|ف|ب|ل|ك|ال)*تاب$/.test(w))));
  assert.ok(K.searchQuran(S,'صبر',{partial:true}).total>K.searchQuran(S,'صبر').total);
  assert.equal(K.searchQuran(S,'').total,0);
 });
@@ -704,4 +704,12 @@ test('assistant answers hadith sciences, grades from the source, and recitation 
  assert.match(await say('السكتات عند حفص'),/عوجا/);
  await say('افتح سورة البقرة آية 2');assert.match(await say('احكام التجويد في الآية دي'),/وعلامات الوقف: «∴» بعد/);
  assert.equal(h.ctx.TarteelAssistant.tools.explain_hadith_term({term:'المرسل'}).terms[0].term,'مرسل');
+});
+
+test('misheard or misspelled surah names find the right surah; «مصر» is found in all five ayat',async()=>{
+ const Q=require('./data/quran.json').data.surahs,S=require('./data/simple.json').data.surahs;
+ for(const [w,n]of [['الفاتحة',1],['الفاتحه',1],['فاتحه',1],['الفتحه',1],['الفتح',48],['الفاتح',48],['الكهوف',18],['البقره',2],['الرحمان',55],['المطففين',83]])assert.equal(K.closestSurah(Q,w),n,w);
+ assert.equal(K.closestSurah(Q,'الصبر'),null);
+ const r=K.searchQuran(S,'مصر');assert.deepEqual(r.results.map(x=>x.surah+':'+x.ayah),['2:61','10:87','12:21','12:99','43:51']);
+ assert.equal(K.searchQuran(S,'تاب').results.some(x=>x.surah===4&&x.ayah===16),false);
 });

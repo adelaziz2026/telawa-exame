@@ -177,7 +177,11 @@ function findSurahIn(t){
   const re=f.length<=3?new RegExp(`سوره ${f}(?: |$)`):new RegExp(`(?:^| )(?:سوره )?${f}(?: |$)`);
   if(re.test(t)&&(!best||f.length>best.len))best={n,len:f.length};
  }
- return best?.n??null;
+ if(best)return best.n;
+ // A misheard or misspelled name («افتح الفتحه»، «سورة الفاتح»): only the word right after «سورة» or after a command,
+ // so ordinary words in a sentence («ابحث عن الصبر») never turn into a surah.
+ const said=t.match(/(?:^| )(?:(?:افتح|افتحلي|روح ل|روحلي|وديني|شغل|شغلي|اقرا|اقرالي|تفسير)(?: سوره)?|سوره) (\S+)/)?.[1];
+ return said&&!/^(?:سوره|الايه|ايه|رقم|القران|المصحف)$/.test(said)?QuranKnowledge.closestSurah(surahs,said):null;
 }
 // Whole words only, with or without «ال»: «علي» in a reciter's name must not match «عليكم».
 function findReciter(t){
@@ -340,9 +344,9 @@ async function knowledgeTurn(t,raw=t){
   return `لقيت ${count(r.total,'حديث واحد','حديثين','أحاديث','حديث')} فيه «${query}» في ${where}. ${r.total>1?'أولهم ':''}من ${h.book} رقم ${h.number}${grade}: ${h.text}`;
  }
  // 7. Word search, in the whole Mushaf or one surah, with how many times it comes.
- if(/(ابحث|(?:^| )(?:دور|دورلي)(?: |$)|(?:^| )فين(?: |$)|كام مره|عدد مرات|وردت|اتذكرت|اتكررت|جت كلمه)/.test(t)){
+ if(/(ابحث|(?:^| )(?:دور|دورلي)(?: |$)|(?:^| )فين(?: |$)|كام مره|عدد مرات|وردت|اتذكرت|اتكررت|جت كلمه|^(?:كلمه|لفظ|لفظه) |^\S+(?: \S+)? (?:في|فى) (?:القران|المصحف)$)/.test(t)){
   const inPart=t.match(/ (?:في|فى) (سوره .+)$/),surah=inPart?findSurahIn(inPart[1]):null;
-  let query=((t.match(/(?:كلمه|لفظ|لفظه) (.+)$/)||t.match(/(?:ابحث|دور|ابحثلي|دورلي)(?: عن| علي)? (.+)$/)||t.match(/(?:فين|كام مره|عدد مرات)(?: (?:اتذكرت|وردت|جت|ذكرت|اتكررت))? (.+)$/))?.[1]||'')
+  let query=((t.match(/(?:كلمه|لفظ|لفظه) (.+)$/)||t.match(/(?:ابحث|دور|ابحثلي|دورلي)(?: عن| علي)? (.+)$/)||t.match(/(?:فين|كام مره|عدد مرات)(?: (?:اتذكرت|وردت|جت|ذكرت|اتكررت))? (.+)$/)||t.match(/^(.+?) (?:في|فى) (?:القران|المصحف)$/))?.[1]||'')
    .replace(/ (?:في|فى) (?:سوره|القران|المصحف).*$/,'').replace(/ (?:اتذكرت|وردت|جت|ذكرت|اتكررت|موجوده|كام مره).*$/,'').replace(/^(?:جزء من |اي )?(?:كلمه|لفظ|لفظه) /,'').trim();
   if(/^(?:عن|علي|في|كلمه|لفظ|لفظه)$/.test(query))query='';
   if(!query)return 'قوللي الكلمة اللي عايز تدور عليها، مثلًا: «ابحث عن كلمة الصبر» أو «كام مرة اتذكرت الجنة».';
@@ -402,6 +406,7 @@ async function localTurn(text){
  if(!did){
   if(/^(السلام|سلام|مرحبا|اهلا|هلا|صباح|مساء|ازيك|ازاي)/.test(t)&&!/(تعمل|تقدر|تساعد)/.test(t))said.push('وعليكم السلام ورحمة الله وبركاته! أهلًا بيك. '+CAN);
   else if(/(ماذا|كيف|شو|ايش|ايه|ازاي).*(تستطيع|تقدر|تساعد|يمكنك|تعمل|بتعمل)|مساعده|ساعدني/.test(t))said.push(CAN);
+  else if(t.split(' ').length<=2&&tools.search_quran({query:t,phrase:t.includes(' ')}).ayat_count){said.push(await knowledgeTurn('ابحث عن '+t,text));}
   else said.push('معلش، مفهمتش طلبك في الوضع المحلي. '+CAN+' ولو عايز تتكلم معايا براحتك فعّل Claude (بص في README).');
  }
  const reply=said.join(' ');bubble('assistant',reply);speak(reply);

@@ -421,8 +421,11 @@ function fillSearch(){$('surahNames').replaceChildren(...surahs.map(s=>{const o=
 function findSurah(query){
  const western=query.trim().replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d)),n=Number(western.match(/^\d+/)?.[0]);
  if(n>=1&&n<=114)return n;
- const q=QuranCompare.normalize(western).replace(/^سورة\s+/,'');if(!q)return null;
- return (surahs.find(s=>plainName(s.name)===q)||surahs.find(s=>plainName(s.name).includes(q)))?.number??null;
+ // ة and ه are typed interchangeably («الفاتحه»), so both sides compare with ه.
+ const h=t=>t.replace(/ة/g,'ه'),q=h(QuranCompare.normalize(western).replace(/^سور[ةه]\s+/,''));if(!q)return null;
+ const names=surahs.map(s=>({n:s.number,name:h(plainName(s.name))}));
+ // Exact, then the start of a name («الفت» → الفتح, not الفاتحة), then anywhere, then the nearest misspelled name.
+ return (names.find(x=>x.name===q)||names.find(x=>x.name.startsWith(q))||names.find(x=>x.name.includes(q)))?.n??globalThis.QuranKnowledge?.closestSurah(surahs,q)??null;
 }
 $('surahSearch').onchange=()=>{const value=$('surahSearch').value;if(!value.trim()||loading)return;const n=findSurah(value);$('surahSearch').value='';if(n){goTo(n,1);toast(`انتقلت إلى ${surahs[n-1].name}`);}else toast('لم أجد سورة بهذا الاسم أو الرقم.');};
 $('retry').onclick=()=>{$('retry').hidden=true;$('versePanel').classList.remove('failed');$('versePanel').classList.add('loading');$('verse').textContent='جارٍ تحميل النص القرآني';init();};
