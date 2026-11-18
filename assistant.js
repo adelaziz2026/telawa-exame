@@ -570,7 +570,7 @@ async function llmTurn(text,t){
   // An empty reply is one the model could not finish reliably (see LocalLLM.broken): nothing of it is shown or kept.
   if(!reply){div.textContent='لم أستطع صياغة إجابة موثوقة لهذا السؤال. جرّب أمرًا مثل «ابحث عن …» أو «تفسير الآية» أو «افتح سورة …».';return;}
   if(onServer)rememberAnswer(key,reply);
-  show(reply,(onServer?'🌐 نموذج على خادم التطبيق':'🧠 نموذج محلي على جهازك')+' — قد يخطئ، فتأكد من المصدر');
+  show(reply,(onServer?LocalLLM.lastMode==='cpu'?'🐢 نموذج الخادم بوضع CPU الأبطأ':'🌐 نموذج على خادم التطبيق':'🧠 نموذج محلي على جهازك')+' — قد يخطئ، فتأكد من المصدر');
  }catch(e){
   div.textContent=e.friendly?e.message:'تعذّر تشغيل النموذج المحلي: '+(e.message||e);
   if(e.quota){$('llmStatus').textContent='الحد المجاني انتهى الآن. يعمل البحث والأوامر، وستُجرَّب الخدمة لاحقًا.';$('aiMode').textContent='الوضع المحلي · أوامر أساسية';}
@@ -579,7 +579,7 @@ async function llmTurn(text,t){
 // Free chat through the app's server (adel203047/tarteel-assistant), off until the person turns it on, and it can be turned off again.
 function setupRemoteLLM(L){
  const button=$('llmEnable'),note=$('llmStatus');
- const OFF='🌐 تفعيل المحادثة الحرة عبر الخادم',NOTE='اختياري ومجاني: يُرسل سؤالك ومصادره إلى Hugging Face. نحو 3 أسئلة يوميًا، وقد يتأخر أول رد.';
+ const OFF='🌐 تفعيل المحادثة الحرة عبر الخادم',NOTE='اختياري ومجاني: يُرسل سؤالك ومصادره إلى Hugging Face. أسئلة سريعة محدودة، ثم وضع أبطأ عند انتهائها.';
  const off=()=>{L.disableRemote();save('llmRemote',false);button.textContent=OFF;note.textContent=NOTE;status=null;checkStatus();};
  const on=async()=>{
   button.disabled=true;note.textContent='جارٍ الاتصال بالخادم…';

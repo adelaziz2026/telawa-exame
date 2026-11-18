@@ -24,8 +24,8 @@ const randomText=()=>b64url(scope.crypto.getRandomValues(new Uint8Array(32)));
 const pageUrl=()=>scope.location.origin+scope.location.pathname.replace(/index\.html$/,'');
 const auth=()=>{const a=readJson('localStorage',AUTH_KEY);return a?.token&&a.expires>Date.now()+60000?a:null;};
 const authHeaders=()=>{const a=auth();return a&&remoteUrl()===REMOTE_URL?{authorization:'Bearer '+a.token}:{};};
-let remoteOn=false,quotaUntil=0;
-const remoteOpen=()=>remoteOn&&Date.now()>=quotaUntil;
+let remoteOn=false,quotaUntil=0,cpuMissing=false;
+const remoteOpen=()=>remoteOn&&(Date.now()>=quotaUntil||!cpuMissing);
 const native=!!scope.Capacitor?.isNativePlatform?.();
 const phone=/Android|iPhone|iPad|iPod|Mobile/i.test(scope.navigator?.userAgent||'')||!!scope.matchMedia?.('(pointer: coarse)').matches;
 let engine=null,loading=null;
@@ -93,7 +93,7 @@ const LocalLLM={
   }
   throw friendly('انتهت مهلة رمز الدخول. اطلب رمزًا جديدًا.');
  },
- disableRemote(){remoteOn=false;quotaUntil=0;},
+ disableRemote(){remoteOn=false;quotaUntil=0;cpuMissing=false;},
  // A sleeping free server needs a while to wake, so a failed check is reported as «try again», not as an error.
  async enableRemote(){
   let ok=false;try{ok=(await scope.fetch(remoteUrl()+'/gradio_api/info',{cache:'no-store',signal:AbortSignal.timeout(25000)})).ok;}catch{}
@@ -101,18 +101,23 @@ const LocalLLM={
   remoteOn=true;
  },
  // Sends only the question, the sources the app gathered for it, and the earlier turns of a follow-up.
+ // The GPU route answers first. When its free runs are used up, the same model answers more slowly on the server's processor.
  async askRemote({question,sources='',history=[]},onToken){
   if(question.length>500)throw friendly('السؤال طويل. اختصره إلى 500 حرف.');
-  const stop=new AbortController,timer=setTimeout(()=>stop.abort(),240000);
-  const busy='الخدمة المجانية مشغولة أو انتهى رصيدك اليومي. حاول لاحقًا.';
-  try{
+  const stop=new AbortController,timer=setTimeout(()=>stop.abort(),300000);
+  const busy='الخدمة المجانية مشغولة الآن. حاول بعد قليل.';
+  const quotaError=()=>Object.assign(friendly((signedIn.authorization?'انتهت حصة حسابك المجانية في الخدمة الذكية الآن.':LocalLLM.signInSupported()?'انتهت الأسئلة المجانية في الخدمة الذكية الآن. سجّل الدخول بحساب Hugging Face المجاني لتحصل على حصة أكبر.':'انتهت الأسئلة المجانية في الخدمة الذكية الآن.')+' ما زال البحث في القرآن وأوامر التطبيق يعملان.'),{quota:true});
+  const signedIn=authHeaders(),expired=()=>{LocalLLM.signOut();return friendly('انتهت جلسة Hugging Face. سجّل الدخول مرة أخرى أو أعد إرسال سؤالك.');};
+  const missing=()=>Object.assign(friendly(busy),{cpuMissing:true});
+  const call=async api=>{
    const turns=JSON.stringify(history.map(h=>({role:h.role,content:h.content.slice(0,1000)})));
-   const signedIn=authHeaders(),expired=()=>{LocalLLM.signOut();return friendly('انتهت جلسة Hugging Face. سجّل الدخول مرة أخرى أو أعد إرسال سؤالك.');};
-   const start=await scope.fetch(remoteUrl()+'/gradio_api/call/ask',{method:'POST',headers:{'content-type':'application/json',...signedIn},signal:stop.signal,body:JSON.stringify({data:[question,sources.slice(0,8000),turns]})});
+   const start=await scope.fetch(remoteUrl()+'/gradio_api/call/'+api,{method:'POST',headers:{'content-type':'application/json',...signedIn},signal:stop.signal,body:JSON.stringify({data:[question,sources.slice(0,8000),turns]})});
    if(start.status===401&&signedIn.authorization)throw expired();
+   if(api==='ask_cpu'&&start.status===404)throw missing();
    if(!start.ok)throw friendly(busy);
-   const {event_id:id}=await start.json();
-   const r=await scope.fetch(remoteUrl()+'/gradio_api/call/ask/'+encodeURIComponent(id),{headers:signedIn,signal:stop.signal});
+   let id;try{id=(await start.json()).event_id;}catch{}
+   if(!id){if(api==='ask_cpu')throw missing();throw friendly(busy);}
+   const r=await scope.fetch(remoteUrl()+'/gradio_api/call/'+api+'/'+encodeURIComponent(id),{headers:signedIn,signal:stop.signal});
    if(r.status===401&&signedIn.authorization)throw expired();
    if(!r.ok)throw friendly(busy);
    const reader=r.body.getReader(),decoder=new TextDecoder;let buffer='',text='';
@@ -123,8 +128,8 @@ const LocalLLM={
     for(const block of events){
      const kind=block.match(/^event: (.+)$/m)?.[1],line=block.match(/^data: (.*)$/m)?.[1];
      if(kind==='error'){
-      // Out of free runs: rest the server for an hour, so the app's own search and commands answer meanwhile.
-      if(/quota|runs limit/i.test(line||'')){quotaUntil=Date.now()+3600000;const more=signedIn.authorization?'انتهت حصة حسابك المجانية في الخدمة الذكية الآن.':LocalLLM.signInSupported()?'انتهت الأسئلة المجانية في الخدمة الذكية الآن. سجّل الدخول بحساب Hugging Face المجاني لتحصل على حصة أكبر.':'انتهت الأسئلة المجانية في الخدمة الذكية الآن.';throw Object.assign(friendly(more+' ما زال البحث في القرآن وأوامر التطبيق يعملان.'),{quota:true});}
+      if(api==='ask'&&/quota|runs limit/i.test(line||''))throw Object.assign(friendly(busy),{quotaHit:true});
+      if(api==='ask_cpu'&&/cpu unavailable/i.test(line||''))throw missing();
       throw friendly(busy);
      }
      if((kind!=='generating'&&kind!=='complete')||!line)continue;
@@ -134,6 +139,16 @@ const LocalLLM={
     }
    }
    return text.trim();
+  };
+  try{
+   if(Date.now()>=quotaUntil){
+    try{LocalLLM.lastMode='gpu';return await call('ask');}
+    catch(e){if(!e.quotaHit)throw e;quotaUntil=Date.now()+3600000;}
+   }
+   if(cpuMissing)throw quotaError();
+   LocalLLM.lastMode='cpu';onToken?.('انتهت أسئلة GPU السريعة، وأجيبك الآن بوضع أبطأ. قد يتأخر الرد قليلًا…');
+   try{return await call('ask_cpu');}
+   catch(e){if(e.cpuMissing){cpuMissing=true;throw quotaError();}throw e;}
   }catch(e){
    if(e.friendly)throw e;
    throw friendly(stop.signal.aborted?'تأخر الخادم كثيرًا. حاول مرة أخرى.':'تعذّر الاتصال بالخادم. تحقق من الإنترنت.');

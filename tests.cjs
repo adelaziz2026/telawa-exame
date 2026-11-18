@@ -470,6 +470,13 @@ test('the server is asked only when needed: no sources and repeated questions co
  await h.ctx.TarteelAssistant.ask('ما الحكمة من ذكر الصبر؟');assert.equal(asked.length,1);assert.doesNotMatch(asked[0].sources,/الآية المفتوحة/);assert.equal(spoken.at(-1).text,'جواب من المصادر');
  await h.ctx.TarteelAssistant.ask('ما الحكمة من ذكر الصبر؟');assert.equal(asked.length,1);assert.equal(spoken.at(-1).text,'جواب من المصادر');
 });
+test('when GPU runs end the same question is answered by the slower CPU route',async()=>{
+ const urls=[],sse=(k,d)=>new Response('event: '+k+'\ndata: '+JSON.stringify(d)+'\n\n');
+ const fetch=async(u,o={})=>{u=String(u);urls.push(u);if(u.endsWith('/gradio_api/info'))return new Response('{}');if(o.method==='POST')return new Response(JSON.stringify({event_id:u.endsWith('ask_cpu')?'c':'g'}));return u.includes('/ask_cpu/')?sse('complete',['جواب بطيء']):sse('error',{error:'You have exceeded your ZeroGPU runs limit.'});};
+ const ctx={navigator:{userAgent:'Android'},localStorage:{getItem:()=>null,setItem(){},removeItem(){}},fetch,setTimeout,clearTimeout,AbortController,AbortSignal,TextDecoder,TextEncoder,URLSearchParams,encodeURIComponent,JSON};ctx.globalThis=ctx;vm.runInNewContext(fs.readFileSync(require.resolve('./llm.js'),'utf8'),ctx);const L=ctx.LocalLLM;
+ await L.enableRemote();const seen=[];assert.equal(await L.askRemote({question:'س'},t=>seen.push(t)),'جواب بطيء');assert.equal(L.lastMode,'cpu');assert.match(seen[0],/وضع أبطأ/);assert.equal(L.ready(),true);
+ urls.length=0;assert.equal(await L.askRemote({question:'س'}),'جواب بطيء');assert.equal(urls.some(u=>u.endsWith('/call/ask')),false);
+});
 test('the phone app signs in with a device code approved in the browser',async()=>{
  const m=new Map,localStorage={getItem:k=>m.get(k)??null,setItem:(k,v)=>m.set(k,String(v)),removeItem:k=>m.delete(k)};let polls=0,native,shown;
  const ctx={navigator:{userAgent:'Android'},Capacitor:{isNativePlatform:()=>true,nativePromise:async(p,a,o)=>{native={p,a,o};return {status:200,data:{device_code:'d1',user_code:'ABCD-1234',verification_uri:'https://hf.co/oauth/device',expires_in:60,interval:0}};}},localStorage,setTimeout:f=>setTimeout(f,0),clearTimeout,AbortController,AbortSignal,TextDecoder,TextEncoder,URLSearchParams,encodeURIComponent,JSON,fetch:async u=>{if(String(u).endsWith('/oauth/userinfo'))return new Response(JSON.stringify({preferred_username:'reader'}));polls++;return polls<2?new Response(JSON.stringify({error:'authorization_pending'}),{status:400}):new Response(JSON.stringify({access_token:'hf_oauth_device',expires_in:3600}));}};ctx.globalThis=ctx;
