@@ -574,6 +574,16 @@ function setupRemoteLLM(L){
  };
  $('llmBar').hidden=false;button.textContent=OFF;note.textContent=NOTE;
  button.onclick=()=>L.remoteEnabled()?off():on();
+ const sign=$('hfSign'),signUI=()=>{const user=L.hfUser?.()||'';sign.hidden=!L.signInSupported?.();sign.textContent=user?`تسجيل الخروج من Hugging Face (${user})`:'🤗 تسجيل الدخول بحساب Hugging Face لأسئلة أكثر';};
+ if(sign){
+  signUI();
+  sign.onclick=async()=>{
+   if(L.hfUser()){L.signOut();signUI();note.textContent='تم تسجيل الخروج من Hugging Face على هذا الجهاز.';return;}
+   sign.disabled=true;note.textContent='جارٍ فتح صفحة Hugging Face…';
+   try{await L.signIn();}catch{note.textContent='تعذّر فتح صفحة تسجيل الدخول.';sign.disabled=false;}
+  };
+  L.finishSignIn?.().then(name=>{if(!name)return;signUI();open(true);on();bubble('note',`تم تسجيل الدخول باسم ${name}. سيطلب التطبيق الحصة الأكبر المتاحة لحسابك المجاني.`);}).catch(e=>{open(true);bubble('note',e.friendly?e.message:'تعذّر إكمال تسجيل الدخول.');});
+ }
  if(load('llmRemote',false)===true)on();
 }
 // The enable button: shown on computers with WebGPU only; once enabled, later visits load it from the browser's copy.

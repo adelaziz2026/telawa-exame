@@ -535,7 +535,8 @@ body.mushaf-active{overflow:hidden}
 
 /* Free conversation with a local model (computers only): the enable button, download progress and answer tag. */
 .llm-bar{display:flex;flex-direction:column;gap:3px;padding:6px 12px;border-bottom:1px solid var(--line);background:var(--gold-soft)}
-.llm-bar[hidden]{display:none}
+.llm-bar[hidden],#hfSign[hidden]{display:none}
+#hfSign{padding:5px 10px;border-radius:10px;background:transparent;border:1px solid var(--primary);color:var(--primary);font-weight:700;font-size:12px;text-align:right}
 #llmEnable,#claudeToggle{padding:6px 10px;border-radius:10px;background:var(--primary);color:#fff;font-weight:700;text-align:right}
 #llmEnable small{display:block;font-weight:400;opacity:.85;font-size:11.5px}
 #llmStatus,#claudeStatus{font-size:11px;line-height:1.45;color:var(--gold-ink)}

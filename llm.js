@@ -14,6 +14,16 @@ const tunedUrl=()=>{try{return scope.localStorage?.getItem('tarteel:llmModelUrl'
 const REMOTE_URL='https://adel203047-tarteel-assistant.hf.space';
 const remoteUrl=()=>{let u=REMOTE_URL;try{u=scope.localStorage?.getItem('tarteel:llmRemoteUrl')||REMOTE_URL;}catch{}return u.replace(/\/+$/,'');};
 const friendly=m=>Object.assign(Error(m),{friendly:true});
+// Optional «Sign in with Hugging Face» (OAuth with PKCE, no secret): the person signs in on huggingface.co, so the app never
+// sees the password. The short-lived token asks only for the public profile and goes only to Hugging Face.
+const HF='https://huggingface.co',HF_CLIENT='https://telawa-exame.netlify.app/.well-known/oauth-cimd',AUTH_KEY='tarteel:hfAuth',FLOW_KEY='tarteel:hfFlow';
+const readJson=(area,key)=>{try{return JSON.parse(scope[area]?.getItem(key)||'null');}catch{return null;}};
+const writeJson=(area,key,value)=>{try{if(value)scope[area].setItem(key,JSON.stringify(value));else scope[area].removeItem(key);}catch{}};
+const b64url=bytes=>scope.btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+const randomText=()=>b64url(scope.crypto.getRandomValues(new Uint8Array(32)));
+const pageUrl=()=>scope.location.origin+scope.location.pathname.replace(/index\.html$/,'');
+const auth=()=>{const a=readJson('localStorage',AUTH_KEY);return a?.token&&a.expires>Date.now()+60000?a:null;};
+const authHeaders=()=>{const a=auth();return a&&remoteUrl()===REMOTE_URL?{authorization:'Bearer '+a.token}:{};};
 let remoteOn=false,quotaUntil=0;
 const remoteOpen=()=>remoteOn&&Date.now()>=quotaUntil;
 const native=!!scope.Capacitor?.isNativePlatform?.();
@@ -27,6 +37,36 @@ const LocalLLM={
  remoteSupported:()=>!!remoteUrl(),
  remote:remoteOpen,
  remoteEnabled:()=>remoteOn,
+ signInSupported:()=>!native&&!!scope.crypto?.subtle&&!!scope.location?.origin,
+ hfUser:()=>{const a=auth();return a?a.name||'حسابك':'';},
+ signOut(){writeJson('localStorage',AUTH_KEY,null);quotaUntil=0;},
+ async signIn(){
+  const verifier=randomText(),state=randomText(),redirect=pageUrl();
+  const digest=await scope.crypto.subtle.digest('SHA-256',new TextEncoder().encode(verifier));
+  writeJson('sessionStorage',FLOW_KEY,{verifier,state,redirect});
+  scope.location.assign(HF+'/oauth/authorize?'+new URLSearchParams({client_id:HF_CLIENT,redirect_uri:redirect,response_type:'code',scope:'openid profile',state,code_challenge:b64url(digest),code_challenge_method:'S256'}));
+ },
+ // Runs when Hugging Face sends the person back. Returns their name, or '' when this is an ordinary page load.
+ async finishSignIn(){
+  const q=new URLSearchParams(scope.location?.search||''),state=q.get('state'),code=q.get('code'),failed=q.get('error');
+  if(!state||(!code&&!failed))return '';
+  const flow=readJson('sessionStorage',FLOW_KEY);writeJson('sessionStorage',FLOW_KEY,null);
+  if(!flow)return '';
+  scope.history?.replaceState(null,'',flow.redirect+(scope.location.hash||''));
+  if(flow.state!==state)throw friendly('تعذّر التحقق من تسجيل الدخول. حاول مرة أخرى.');
+  if(failed||!code)throw friendly('لم يكتمل تسجيل الدخول.');
+  let token;
+  try{
+   const r=await scope.fetch(HF+'/oauth/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'authorization_code',code,redirect_uri:flow.redirect,client_id:HF_CLIENT,code_verifier:flow.verifier})});
+   if(r.ok)token=await r.json();
+  }catch{}
+  if(!token?.access_token)throw friendly('تعذّر إكمال تسجيل الدخول. حاول مرة أخرى.');
+  let name='';
+  try{const r=await scope.fetch(HF+'/oauth/userinfo',{headers:{authorization:'Bearer '+token.access_token}});if(r.ok)name=String((await r.json()).preferred_username||'').slice(0,60);}catch{}
+  writeJson('localStorage',AUTH_KEY,{token:token.access_token,expires:Date.now()+1000*(Number(token.expires_in)||28800),name});
+  quotaUntil=0;
+  return name||'حسابك';
+ },
  disableRemote(){remoteOn=false;quotaUntil=0;},
  // A sleeping free server needs a while to wake, so a failed check is reported as «try again», not as an error.
  async enableRemote(){
@@ -41,10 +81,13 @@ const LocalLLM={
   const busy='الخدمة المجانية مشغولة أو انتهى رصيدك اليومي. حاول لاحقًا.';
   try{
    const turns=JSON.stringify(history.map(h=>({role:h.role,content:h.content.slice(0,1000)})));
-   const start=await scope.fetch(remoteUrl()+'/gradio_api/call/ask',{method:'POST',headers:{'content-type':'application/json'},signal:stop.signal,body:JSON.stringify({data:[question,sources.slice(0,8000),turns]})});
+   const signedIn=authHeaders(),expired=()=>{LocalLLM.signOut();return friendly('انتهت جلسة Hugging Face. سجّل الدخول مرة أخرى أو أعد إرسال سؤالك.');};
+   const start=await scope.fetch(remoteUrl()+'/gradio_api/call/ask',{method:'POST',headers:{'content-type':'application/json',...signedIn},signal:stop.signal,body:JSON.stringify({data:[question,sources.slice(0,8000),turns]})});
+   if(start.status===401&&signedIn.authorization)throw expired();
    if(!start.ok)throw friendly(busy);
    const {event_id:id}=await start.json();
-   const r=await scope.fetch(remoteUrl()+'/gradio_api/call/ask/'+encodeURIComponent(id),{signal:stop.signal});
+   const r=await scope.fetch(remoteUrl()+'/gradio_api/call/ask/'+encodeURIComponent(id),{headers:signedIn,signal:stop.signal});
+   if(r.status===401&&signedIn.authorization)throw expired();
    if(!r.ok)throw friendly(busy);
    const reader=r.body.getReader(),decoder=new TextDecoder;let buffer='',text='';
    for(;;){
@@ -55,7 +98,7 @@ const LocalLLM={
      const kind=block.match(/^event: (.+)$/m)?.[1],line=block.match(/^data: (.*)$/m)?.[1];
      if(kind==='error'){
       // Out of free runs: rest the server for an hour, so the app's own search and commands answer meanwhile.
-      if(/quota|runs limit/i.test(line||'')){quotaUntil=Date.now()+3600000;throw Object.assign(friendly('انتهت الأسئلة المجانية في الخدمة الذكية الآن (نحو 3 أسئلة يوميًا). ما زال البحث في القرآن وأوامر التطبيق يعملان.'),{quota:true});}
+      if(/quota|runs limit/i.test(line||'')){quotaUntil=Date.now()+3600000;const more=signedIn.authorization?'انتهت حصة حسابك المجانية في الخدمة الذكية الآن.':LocalLLM.signInSupported()?'انتهت الأسئلة المجانية في الخدمة الذكية الآن. سجّل الدخول بحساب Hugging Face المجاني لتحصل على حصة أكبر.':'انتهت الأسئلة المجانية في الخدمة الذكية الآن.';throw Object.assign(friendly(more+' ما زال البحث في القرآن وأوامر التطبيق يعملان.'),{quota:true});}
       throw friendly(busy);
      }
      if((kind!=='generating'&&kind!=='complete')||!line)continue;

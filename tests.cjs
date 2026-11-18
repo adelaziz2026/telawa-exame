@@ -445,6 +445,22 @@ test('a Quran word never spends a server question, and the free limit hands over
  await h.ctx.TarteelAssistant.ask('ما الحكمة من الصبر؟');assert.equal(calls,1);assert.match(h.el('llmStatus').textContent,/الحد المجاني انتهى/);assert.equal(open,false);
  await h.ctx.TarteelAssistant.ask('ما الحكمة من الصبر؟');assert.equal(calls,1);assert.ok(last!==undefined);
 });
+test('Hugging Face sign-in uses PKCE, keeps the token off other servers, and can be undone',async()=>{
+ const memory=()=>{const m=new Map;return {getItem:k=>m.get(k)??null,setItem:(k,v)=>m.set(k,String(v)),removeItem:k=>m.delete(k)};};
+ const localStorage=memory(),sessionStorage=memory(),sent=[];let opened='';
+ const sse='event: complete\ndata: ["جواب"]\n\n';
+ const fetch=async(u,o={})=>{sent.push({u:String(u),o});u=String(u);if(u.endsWith('/oauth/token'))return new Response(JSON.stringify({access_token:'hf_oauth_test',expires_in:3600}));if(u.endsWith('/oauth/userinfo'))return new Response(JSON.stringify({preferred_username:'reader'}));if(u.endsWith('/gradio_api/info'))return new Response('{}');if(u.endsWith('/gradio_api/call/ask'))return new Response(JSON.stringify({event_id:'e1'}));return new Response(sse);};
+ const load=(search='')=>{const ctx={navigator:{userAgent:'Desktop'},localStorage,sessionStorage,fetch,setTimeout,clearTimeout,AbortController,AbortSignal,TextDecoder,TextEncoder,URLSearchParams,encodeURIComponent,JSON,btoa,crypto:require('node:crypto').webcrypto,location:{origin:'https://telawa-exame.netlify.app',pathname:'/index.html',search,hash:'',assign:u=>{opened=String(u);}},history:{replaceState(){ctx.cleaned=true;}}};ctx.globalThis=ctx;vm.runInNewContext(fs.readFileSync(require.resolve('./llm.js'),'utf8'),ctx);return ctx;};
+ const first=load();assert.equal(first.LocalLLM.signInSupported(),true);await first.LocalLLM.signIn();
+ const url=new URL(opened),p=url.searchParams;assert.equal(url.origin+url.pathname,'https://huggingface.co/oauth/authorize');assert.equal(p.get('redirect_uri'),'https://telawa-exame.netlify.app/');assert.equal(p.get('scope'),'openid profile');assert.equal(p.get('code_challenge_method'),'S256');assert.ok(p.get('code_challenge').length>=43);assert.equal(p.has('client_secret'),false);
+ await assert.rejects(load('?code=c&state=wrong').LocalLLM.finishSignIn(),e=>e.friendly);
+ await first.LocalLLM.signIn();const state=new URL(opened).searchParams.get('state'),back=load('?code=c1&state='+state);
+ assert.equal(await back.LocalLLM.finishSignIn(),'reader');assert.equal(back.cleaned,true);assert.equal(back.LocalLLM.hfUser(),'reader');
+ const body=new URLSearchParams(String(sent.find(x=>x.u.endsWith('/oauth/token')).o.body));assert.ok(body.get('code_verifier'));assert.equal(body.has('client_secret'),false);
+ await back.LocalLLM.askRemote({question:'س'});const calls=sent.filter(x=>x.u.includes('/gradio_api/call/'));assert.equal(calls.length,2);for(const c of calls)assert.equal(c.o.headers.authorization,'Bearer hf_oauth_test');
+ localStorage.setItem('tarteel:llmRemoteUrl','https://other.example');sent.length=0;await back.LocalLLM.askRemote({question:'س'});for(const c of sent)assert.equal(c.o.headers?.authorization,undefined);localStorage.removeItem('tarteel:llmRemoteUrl');
+ back.LocalLLM.signOut();assert.equal(back.LocalLLM.hfUser(),'');sent.length=0;await back.LocalLLM.askRemote({question:'س'});for(const c of sent)assert.equal(c.o.headers?.authorization,undefined);
+});
 test('Claude runs only after its button is pressed, and only when the server is ready',async()=>{
  const h=await appHarness(),spoken=assistantHarness(h,[]);let configured=false,posts=0;
  h.ctx.fetch=async(u,o)=>{if(o?.method==='POST'){posts++;return {ok:true,json:async()=>({content:[{type:'text',text:'رد Claude'}],stop_reason:'end_turn'})};}return {ok:true,json:async()=>({available:true,configured})};};
