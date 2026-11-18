@@ -3,7 +3,14 @@
 // local Mushaf), so the page runs them and sends their results back; this file never sees the user's data otherwise.
 // Needs credentials for the Claude API in the server's environment (ANTHROPIC_API_KEY); the key never reaches the page.
 const MODEL = 'claude-opus-5-5';
-const MAX_BODY = 512 * 1024, MAX_MESSAGES = 80, PER_MINUTE = 20;
+const MAX_BODY = 256 * 1024, MAX_MESSAGES = 80, MAX_REPLY_TOKENS = 6000;
+// Spending guards. They reset when the server restarts, so a monthly limit in the Claude Console stays the real ceiling.
+const number = (name, fallback) => { const n = Number(process.env[name]); return Number.isFinite(n) && n > 0 ? n : fallback; };
+const PER_MINUTE = number('ASSISTANT_PER_MINUTE', 20), CLIENT_PER_MINUTE = number('ASSISTANT_CLIENT_PER_MINUTE', 10);
+const CLIENT_PER_DAY = number('ASSISTANT_CLIENT_PER_DAY', 60), PER_DAY = number('ASSISTANT_DAILY_LIMIT', 300);
+// The app's published sites and the Android app (Capacitor serves it from https://localhost).
+const SITES = new Set(['https://telawa-exame.onrender.com', 'https://telawa-exame.netlify.app', 'https://adelaziz2026.github.io', 'https://localhost',
+  ...String(process.env.ASSISTANT_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean)]);
 
 const SYSTEM = `You are the built-in assistant of «اختبار التلاوة», an Arabic web app for reviewing Quran recitation and memorisation. Users pick a surah and ayah (or a range), listen to a reciter, recite into the microphone, and get a word-by-word comparison with written notes on their mistakes.
 
@@ -71,13 +78,23 @@ function validMessages(messages) {
   return messages.every(m => m && typeof m === 'object' && (m.role === 'user' || m.role === 'assistant') && (typeof m.content === 'string' || Array.isArray(m.content)) && Object.keys(m).length === 2);
 }
 
-const recent = [];
-function rateLimited() {
-  const now = Date.now();
-  while (recent.length && now - recent[0] > 60000) recent.shift();
-  if (recent.length >= PER_MINUTE) return true;
-  recent.push(now);
-  return false;
+const DAY = 86400000, recent = [], clients = new Map();
+const trim = (times, age, now) => { while (times.length && now - times[0] > age) times.shift(); };
+const within = (times, age, now) => { let n = 0; for (let i = times.length - 1; i >= 0 && now - times[i] <= age; i--) n++; return n; };
+// Held in memory only, for the limits below; never logged or stored.
+function clientOf(req) {
+  return String(req.headers['cf-connecting-ip'] || req.headers['true-client-ip'] || String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || 'unknown');
+}
+function resetLimits() { recent.length = 0; clients.clear(); }
+// Returns the failure code, or null after counting this request.
+function overLimit(req) {
+  const now = Date.now(), id = clientOf(req), mine = clients.get(id) || [];
+  trim(recent, DAY, now); trim(mine, DAY, now);
+  if (recent.length >= PER_DAY || mine.length >= CLIENT_PER_DAY) return 'daily_limit';
+  if (within(recent, 60000, now) >= PER_MINUTE || within(mine, 60000, now) >= CLIENT_PER_MINUTE) return 'rate_limited';
+  recent.push(now); mine.push(now); clients.set(id, mine);
+  if (clients.size > 5000) for (const [key, times] of clients) { trim(times, DAY, now); if (!times.length) clients.delete(key); }
+  return null;
 }
 
 function readBody(req) {
@@ -94,31 +111,35 @@ const MESSAGES = {
   not_configured: 'المساعد غير مفعّل: يحتاج مفتاح Claude API على الخادم (ANTHROPIC_API_KEY).',
   no_sdk: 'المساعد غير مفعّل: ثبّت الحزمة بالأمر npm install في مجلد المشروع.',
   rate_limited: 'طلبات كثيرة في وقت قصير. انتظر قليلًا ثم حاول.',
+  daily_limit: 'وصل المساعد الذكي إلى حد اليوم، فأجيبك بالوضع المحلي. حاول غدًا.',
   bad_request: 'تعذّر إرسال المحادثة. ابدأ محادثة جديدة.',
   network: 'تعذّر الاتصال بخدمة Claude. تحقق من الإنترنت.',
   failed: 'حدث خطأ في المساعد. حاول مرة أخرى.',
 };
 
 async function handleAssistant(req, res, send) {
-  const json = (status, body) => send(req, res, status, {'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store'}, JSON.stringify(body));
+  // Only the app's own pages may use the assistant from a browser; other sites cannot spend the key.
+  const origin = req.headers.origin, sameSite = origin === `http://${req.headers.host}` || origin === `https://${req.headers.host}`;
+  const allowed = sameSite || SITES.has(origin);
+  const cors = allowed && origin ? {'Access-Control-Allow-Origin': origin, 'Access-Control-Allow-Methods': 'GET, POST', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Max-Age': '600', 'Vary': 'Origin'} : {'Vary': 'Origin'};
+  const json = (status, body) => send(req, res, status, {'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...cors}, JSON.stringify(body));
   const fail = (status, code) => json(status, {error: code, message: MESSAGES[code]});
+  if (req.method === 'OPTIONS') return send(req, res, allowed ? 204 : 403, cors, '');
   if (req.method === 'GET') return json(200, {available: Boolean(loadSdk() || client), configured: configured(), model: MODEL});
-  if (req.method !== 'POST') return send(req, res, 405, {'Allow': 'GET, POST', 'Content-Type': 'text/plain; charset=utf-8'}, 'Method not allowed');
-  // Only the page itself may use the assistant (blocks other sites from spending the key through the browser).
-  const origin = req.headers.origin;
-  // http locally; https behind a hosting provider (Render and others terminate TLS in front of the server).
-  if (origin && origin !== `http://${req.headers.host}` && origin !== `https://${req.headers.host}`) return fail(403, 'bad_request');
+  if (req.method !== 'POST') return send(req, res, 405, {'Allow': 'GET, POST, OPTIONS', 'Content-Type': 'text/plain; charset=utf-8'}, 'Method not allowed');
+  if (!allowed) return fail(403, 'bad_request');
   let messages;
   try { ({messages} = JSON.parse(await readBody(req))); } catch (e) { return fail(e.status || 400, 'bad_request'); }
   if (!validMessages(messages)) return fail(400, 'bad_request');
   if (!loadSdk() && !client) return fail(503, 'no_sdk');
   if (!configured()) return fail(503, 'not_configured');
-  if (rateLimited()) return fail(429, 'rate_limited');
+  const limit = overLimit(req);
+  if (limit) return fail(429, limit);
   const Anthropic = loadSdk();
   try {
     const response = await getClient().beta.messages.create({
       model: MODEL,
-      max_tokens: 16000,
+      max_tokens: MAX_REPLY_TOKENS,
       // Chat replies are short; low effort keeps them quick.
       output_config: {effort: 'low'},
       // If a safety classifier declines, the API retries on Anthropic's recommended fallback model.
@@ -145,4 +166,4 @@ async function handleAssistant(req, res, send) {
   }
 }
 
-module.exports = {handleAssistant, setClient, validMessages, TOOLS, SYSTEM, MODEL};
+module.exports = {handleAssistant, setClient, validMessages, resetLimits, TOOLS, SYSTEM, MODEL};

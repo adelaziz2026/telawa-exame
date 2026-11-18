@@ -13,7 +13,7 @@ services:
       # Listen on all interfaces (the default 127.0.0.1 is for running on your own computer only).
       - key: HOST
         value: 0.0.0.0
-      # Optional: Claude chat for the assistant. Anyone who opens the site can then use it at your expense,
-      # so leave it empty unless you accept that (the assistant still works in local mode without it).
+      # Optional: Claude chat for the website and phone app. Set a monthly spend limit in the Claude Console first.
+      # The server also limits use per person and per day (ASSISTANT_DAILY_LIMIT, default 300 requests).
       - key: ANTHROPIC_API_KEY
         sync: false

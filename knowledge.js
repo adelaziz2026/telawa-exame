@@ -330,8 +330,8 @@ function gradesOf(book,h){
 }
 // A term from the user's words: «يعني ايه حديث حسن»، «الحديث المرسل»، «الفرق بين الشاذ والمنكر».
 function findMustalah(query){
- // Word by word, without «و» and «ال» in front: «والمنكر» is «منكر». Longer terms first («حسن صحيح» before «حسن»).
- const words=t=>plain(t).split(' ').map(w=>w.replace(/^و(?=ال..)/,'').replace(/^ال(?=..)/,'')).filter(Boolean);
+ // Word by word, without «و/ب/ف» and «ال» in front: «والمنكر» and «بالحسن» are «منكر» and «حسن». Longer terms first («حسن صحيح» before «حسن»).
+ const words=t=>plain(t).split(' ').map(w=>w.replace(/^(?:و|ب|ف|وب)(?=ال..)/,'').replace(/^ال(?=..)/,'')).filter(Boolean);
  const q=words(query),used=new Set(),hits=[];
  for(const k of Object.keys(MUSTALAH).sort((a,b)=>words(b).length-words(a).length||b.length-a.length)){
   const p=words(k);

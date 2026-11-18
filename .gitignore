@@ -7,3 +7,11 @@ Mobile/
 .claude/
 github-upload/
 github-update/
+# Local model training: large files, and the 3B versions are research-license only — never publish
+quran-llm/
+Training/data/
+Training/results/
+Training/*.log
+
+# Phone server: its packaged copy is built from Space/
+Space/__pycache__/

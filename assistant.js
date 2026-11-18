@@ -301,8 +301,12 @@ async function knowledgeTurn(t,raw=t){
  }
  // «معني» only as a whole word: it is also inside «سمعني» (play it for me).
  const wantsTafsir=/(تفسير|فسر|(?:^| )معني(?: |$)|يعني ايه|(?:^| )(?:اشرح|اشرحلي|شرح)(?: |$)|سبب نزول|سبب النزول)/.test(t);
+ // Advice on memorising and reviewing: a fixed, reviewed answer about the app's own tools (the small model does this poorly).
+ if(/(?:كيف|ازاي|طريقه|نصيحه|نصايح|نصائح|خطه|عايز احفظ).*(?:احفظ|الحفظ|حفظي|حفظت|اراجع|المراجعه|اثبت)|(?:بنسي|انسي|نسيت).*(?:احفظ|حفظ)/.test(t)&&!/حفظ الله|جمع القران/.test(t))
+  return 'هذه نصائح عامة من طريقة عمل التطبيق، لا فتوى ولا منهج ملزم: اختر آيات قليلة، واستمع لها مع التكرار، ثم فعّل «إخفاء الآية للتسميع» واقرأها بصوتك، وراجع الكلمات المختلفة واستمع لنطقها الصحيح. وزر «🧠 اقترح آية للمراجعة» وقائمة «آيات تحتاج مراجعة» يساعدانك على تثبيت الأضعف أولًا. وللخطة المناسبة لك وإتقان التلاوة، اعرض حفظك على معلم متقن.';
  // 2. An ayah quoted from memory: find it, and explain it if asked.
- if(/(?:الايه|ايه|اللي)(?: اللي)? (?:بتقول|بيقول|تقول|فيها)$/.test(t))return 'الآية بتقول إيه؟ قول جزء منها، مثلًا: «فين الآية اللي بتقول وجعلنا من الماء كل شيء حي».';
+ // Not «وكم آية فيها؟» (how many ayat a surah has): that is a question about the surah.
+ if(/(?:الايه|ايه|اللي)(?: اللي)? (?:بتقول|بيقول|تقول|فيها)$/.test(t)&&!/(?:كم|كام) (?:ايه|ايات) فيها$/.test(t))return 'الآية بتقول إيه؟ قول جزء منها، مثلًا: «فين الآية اللي بتقول وجعلنا من الماء كل شيء حي».';
  const quote=quoteIn(t,raw);
  if(quote&&quote.split(' ').length>=2){
   const r=tools.find_ayah({text:quote});chip(actionLabel.find_ayah);
@@ -365,6 +369,8 @@ async function localTurn(text){
  if(loading){bubble('assistant','المصحف لسه بيحمّل، استنى ثانية وجرّب تاني.');return;}
  try{const answer=await knowledgeTurn(t,text);if(answer){bubble('assistant',answer);speak(answer);return;}}
  catch(e){const m=String(e.message||e);bubble('note',/does not exist|has \d+ ayat|still loading/.test(m)?'الرقم ده مش موجود في المصحف، أو المصحف لسه بيحمّل. اتأكد من رقم السورة والآية.':'تعذّر الوصول للمصدر: '+m+'. تحقق من الإنترنت.');return;}
+ // With the local model on, a real question («ما الفرق بين…؟») goes to it instead of being read as a command.
+ if(globalThis.LocalLLM?.ready()&&(/[؟?]\s*$/.test(text)||/^(?:ما|ماذا|لماذا|ليه|كيف|ازاي|هل|مين|من هو|من هي|متي|اين|اشرح|وضح|عرفني|احكيلي|ايه الفرق|ما الفرق|ايه فضل|ما فضل)(?: |$)/.test(t))&&!/^(?:افتح|شغل|اقرا|سمع|روح|وديني|خبي|اخفي|اظهر|ابحث|دور)/.test(t)){await llmTurn(text,t);return;}
  const said=[];let did=false;
  try{
   // 1. Where to go: «آية الكرسي», a surah by name or number, an ayah number, or a range.
@@ -406,6 +412,7 @@ async function localTurn(text){
  if(!did){
   if(/^(السلام|سلام|مرحبا|اهلا|هلا|صباح|مساء|ازيك|ازاي)/.test(t)&&!/(تعمل|تقدر|تساعد)/.test(t))said.push('وعليكم السلام ورحمة الله وبركاته! أهلًا بيك. '+CAN);
   else if(/(ماذا|كيف|شو|ايش|ايه|ازاي).*(تستطيع|تقدر|تساعد|يمكنك|تعمل|بتعمل)|مساعده|ساعدني/.test(t))said.push(CAN);
+  else if(globalThis.LocalLLM?.ready()){await llmTurn(text,t);return;}
   else if(t.split(' ').length<=2&&tools.search_quran({query:t,phrase:t.includes(' ')}).ayat_count){said.push(await knowledgeTurn('ابحث عن '+t,text));}
   else said.push('معلش، مفهمتش طلبك في الوضع المحلي. '+CAN+' ولو عايز تتكلم معايا براحتك فعّل Claude (بص في README).');
  }
@@ -413,15 +420,128 @@ async function localTurn(text){
 }
 
 // ---------- Conversation with the server ----------
+// The Android app and the static copies of the site have no server of their own, so they use the one on Render.
+const REMOTE_ASSISTANT=!!globalThis.Capacitor?.isNativePlatform?.()||/(?:^|\.)(?:netlify\.app|github\.io)$/.test(globalThis.location?.hostname||'');
+const ASSISTANT_API=REMOTE_ASSISTANT?'https://telawa-exame.onrender.com/api/assistant':'api/assistant';
 async function checkStatus(){
- if(status)return status;
- try{const r=await fetch('api/assistant');status=r.ok?await r.json():{available:false};}catch{status={available:false};}
+ if(status&&!status.retry)return status;
+ // A free server may be asleep: do not wait long, answer locally, and look again on the next question.
+ try{const r=await fetch(ASSISTANT_API,{signal:AbortSignal.timeout(6000)});status=r.ok?await r.json():{available:false,retry:true};}catch{status={available:false,retry:true};}
  const claude=status.available&&status.configured;
- $('aiMode').textContent=claude?'Claude · محادثة وصوت':'الوضع المحلي · أوامر أساسية';
+ $('aiMode').textContent=claude?'Claude · محادثة وصوت':globalThis.LocalLLM?.remote?.()?'الوضع المحلي + نموذج على الخادم':'الوضع المحلي · أوامر أساسية';
  // In the phone app the local mode is the assistant, so no hint about server keys.
- if(status.available&&!status.configured)bubble('note','المساعد شغّال بالوضع المحلي: بيفهم الأوامر الأساسية كتابة أو بالصوت. لو عايز محادثة حرة بالذكاء الاصطناعي ضيف مفتاح Claude API على الخادم (بص في README).');
+ if(claude){let told=false;try{told=localStorage.getItem('tarteel:aiNotice')==='1';localStorage.setItem('tarteel:aiNotice','1');}catch{}if(!told)bubble('note','المساعد الذكي يعمل بخدمة Claude: تُرسل رسائلك وما يلزم للرد إلى Anthropic. قد يخطئ، فتأكد من المصدر.');}
+ if(!REMOTE_ASSISTANT&&status.available&&!status.configured)bubble('note','المساعد شغّال بالوضع المحلي: بيفهم الأوامر الأساسية كتابة أو بالصوت. لو عايز محادثة حرة بالذكاء الاصطناعي ضيف مفتاح Claude API على الخادم (بص في README).');
  return status;
 }
+// ---------- Free conversation with the local model (computers only, see llm.js) ----------
+// Words that say nothing about the subject, so they are not searched in the Mushaf.
+const LLM_STOP=new Set('الفرق فرق بين وبين سبب اسباب فضل اذكر اعطني اديني عايزه سميت تسميه سؤال ايه ازاي ليه امتي مين هل ما ماذا كيف لماذا متي اين فين عن في من علي الي اللي ده دي دول هو هي هم انا انت احنا القران سوره الايه ايه يعني قول قولي عايز عاوز ممكن اشرح تشرح اعرف معني الله كان كانت التي الذي هذا هذه ذلك لكن او ثم قال كلمه لفظ لفظه بهذا الاسم اسم قوله تعالي عدد كم وردت ورد ذكرت تعريف عرف حكم احكام الحروف حروف اي ايش موجوده موجود فيها فيه مكتوب جاءت جاء تكررت تكرر مره مرات الكريم المصحف ايات الايات اسمها لها له'.split(' '));
+const ayatWord=n=>n>=3&&n<=10?'آيات':'آية';
+// The sources for one question: the open ayah, named surahs' facts, hadith terms, tajweed rules, Quran sciences facts,
+// and — for questions about the Mushaf's words — matching ayat and where a word occurs.
+function llmSources(text,t){
+ const parts=[],surah=Number($('surah').value),ayah=rangeNumbers()[0],open=surahs[surah-1]?.ayahs[ayah-1];
+ if(open)parts.push(`الآية المفتوحة في التطبيق: ${nameOf(surah)} ${ayah}: ${open.text}`);
+ // Every surah named in the question («الفرق بين الفاتحة والفتح»), not just the first.
+ surahNames??=surahs.map(x=>({n:x.number,forms:namesOf(x)}));
+ const named=new Set(surahNames.filter(({forms})=>forms.some(f=>new RegExp(`(?:^| )(?:و|ب|ل)?${f.length>3?'':'سوره '}${f}(?: |$)`).test(t))).map(x=>x.n));
+ const one=findSurahIn(t);if(one)named.add(one);
+ for(const s of [...named].slice(0,3)){const i=tools.get_surah_info({surah:s});parts.push(`معلومات ${nameOf(s)}: سورة ${i.revelation}، عدد آياتها ${i.ayat}، ترتيبها ${s} في المصحف، في الجزء ${[].concat(i.juz).join(' و')}.`);}
+ const m=QuranKnowledge.findMustalah(text);
+ if(m.length)parts.push(`من مصطلح الحديث (${QuranKnowledge.MUSTALAH_SOURCE}): `+m.slice(0,2).map(x=>`${x.term}: ${x.def}`).join(' | '));
+ // Tajweed rules and recitation topics named in the question («ما هو الإقلاب»، «مخارج الحروف»).
+ const bare=w=>w.replace(/^(?:و|ب|ف)?ال(?=..)/,''),tw=t.split(' ').map(bare);
+ const rules=[...Object.values(QuranKnowledge.TAJWEED_RULES).map(r=>({name:r.name,how:r.how})),...Object.entries(QuranKnowledge.RECITATION_TOPICS).map(([name,r])=>({name,how:r.how}))]
+  .filter(r=>{
+   // Whole words only, without «و/ب/ف» and «ال» in front; a rule is named in full, by its first word, or by two of its words («المد المتصل»).
+   const n=norm(r.name).split(' ').map(bare),has=ws=>tw.some((_,i)=>ws.every((w,j)=>tw[i+j]===w));
+   return [n,...(/^(?:مد|لام|تفخيم|ترقيق|علامات|غنه)$/.test(n[0])?[]:[[n[0]]]),...(n.length>2?[[n[0],n[1]],[n[0],n.at(-1)]]:[])].some(has);
+  });
+ if(rules.length)parts.push('من أحكام التجويد: '+rules.slice(0,3).map(r=>`${r.name}: ${r.how}`).join(' | '));
+ // Quran sciences facts counted from the Mushaf, when the question is about them.
+ // Not for a named surah («كم عدد آيات سورة البقرة» has its own facts above).
+ const facts=!named.size&&/(?:عدد|كم|كام) (?:سور|سوره|ايات|ايه|كلمات|اجزاء|جزء|احزاب|حزب)|فيه كام|اطول سوره|اقصر سوره|سجد|اول (?:ما|ايه|سوره) نزل|اخر (?:ما|ايه|سوره) نزل|جمع القران|القراءات|القراء العشره|الحروف المقطعه|نزل القران|مده نزول|السور المكيه|السور المدنيه/.test(t);
+ if(facts){
+  const q=QuranKnowledge.quranFacts(surahs),c=q.counted_from_this_mushaf;
+  parts.push(`من علوم القرآن (محسوب من المصحف في التطبيق، ${c.ayah_count_method}): عدد السور ${c.surahs}، والآيات ${c.ayat}، والكلمات ${c.words}، المكية ${c.meccan_surahs} والمدنية ${c.medinan_surahs}، الأجزاء ${c.juz} والأحزاب ${c.hizb} والصفحات ${c.pages}، أطول سورة ${nameOf(c.longest_surah.number)} (${c.longest_surah.ayat} آية)، وأقصر السور ${c.shortest_surahs.map(x=>nameOf(x.number)).join(' و')} (3 آيات)، وسجدات التلاوة ${c.sajdat_tilawa.length}.`);
+  parts.push('ومن المشهور في علوم القرآن: '+q.classical.join(' '));
+ }
+ // The Mushaf's own words: skipped for a question about a hadith term, a tajweed rule or the facts above, unless a word is asked about.
+ const asksWord=/(?:^| )(?:كلمه|لفظ|لفظه|وردت|ورد|ذكرت|تكررت|قوله تعالي|الايه)(?: |$)/.test(t);
+ if(!asksWord&&(m.length||rules.length||facts))return parts.join('\n');
+ const surahWords=new Set([...named].flatMap(n=>surahNames[n-1].forms).flatMap(f=>f.split(' ')));
+ const content=t.split(' ').filter(w=>w.length>=3&&!LLM_STOP.has(w)&&!surahWords.has(w));
+ const f=content.length>=2?tools.find_ayah({text:content.join(' ')}):{};
+ if(f.results?.length&&(f.exact_match||(f.results[0].words_matched_percent||0)>=60))parts.push('آيات تطابق كلام السائل: '+f.results.slice(0,2).map(x=>`${nameOf(x.surah)} ${x.ayah}: ${x.text}`).join(' | '));
+ for(const w of content.slice(0,3)){
+  const r=tools.search_quran({query:w});
+  if(r.ayat_count&&r.ayat_count<=40)parts.push(`كلمة «${w}» وردت في ${r.ayat_count} ${ayatWord(r.ayat_count)}: `+r.results.slice(0,10).map(x=>`${nameOf(x.surah)} ${x.ayah}`).join('، ')+(r.ayat_count>10?'، وغيرها':'')+'. ونص أولها: '+r.results.slice(0,2).map(x=>`${nameOf(x.surah)} ${x.ayah}: ${x.text}`).join(' | '));
+ }
+ return parts.join('\n');
+}
+const LLM_RULES='أنت مساعد في تطبيق «اختبار التلاوة» لمراجعة حفظ القرآن الكريم. أجب بالعربية الفصحى البسيطة في جمل قليلة. '
+ +'اعتمد على «المصادر» وحدها: لا تضف معلومة تاريخية أو سبب نزول أو تاريخًا أو عددًا ليس فيها، وانقل الكلمات كما هي (مكية/مدنية). '
+ +'لا تكتب نص آية أو حديث ولا رقم آية إلا إذا كان مكتوبًا في «المصادر» حرفيًا، ولا تنسب قولًا لعالم من عندك. '
+ +'لا تحكم على صحة حديث ولا تُفتِ في الأحكام الشرعية؛ وجّه السائل لعالم موثوق. '
+ +'إن لم يكن الجواب في المصادر فقل بوضوح إنك لا تعرفه من المصادر المتاحة، واقترح أمرًا من أوامر التطبيق مثل «ابحث عن كلمة…» أو «تفسير الآية» أو «افتح سورة…».';
+let llmHistory=[];
+async function llmTurn(text,t){
+ const div=bubble('assistant','…');div.classList.add('ai-llm');
+ try{
+  const sources=llmSources(text,t);
+  // Earlier turns only for a follow-up («وكم عدد آياتها؟»: short, or starting with «و», and naming no surah of its own);
+  // otherwise a previous answer's wording leaks into an unrelated new question.
+  const followUp=(/^(?:و|طب |طيب )/.test(t)||t.split(' ').length<=4)&&!/(?:^|\n)معلومات سورة /.test(sources);
+  const earlier=followUp?llmHistory.slice(-4):[],onServer=LocalLLM.remote();
+  const onToken=partial=>{div.textContent=partial;};
+  const messages=[{role:'system',content:LLM_RULES},...earlier,{role:'user',content:(sources?`المصادر:\n${sources}\n\n`:'المصادر: لا يوجد.\n\n')+'السؤال: '+text}];
+  const reply=onServer?await LocalLLM.askRemote({question:text,sources,history:earlier},onToken):await LocalLLM.answer(messages,onToken);
+  // An empty reply is one the model could not finish reliably (see LocalLLM.broken): nothing of it is shown or kept.
+  if(!reply){div.textContent='لم أستطع صياغة إجابة موثوقة لهذا السؤال. جرّب أمرًا مثل «ابحث عن …» أو «تفسير الآية» أو «افتح سورة …».';return;}
+  div.textContent=reply;
+  div.append(Object.assign(document.createElement('small'),{className:'ai-llm-tag',textContent:(onServer?'🌐 نموذج على خادم التطبيق':'🧠 نموذج محلي على جهازك')+' — قد يخطئ، فتأكد من المصدر'}));
+  llmHistory.push({role:'user',content:text},{role:'assistant',content:reply});
+  speak(reply);
+ }catch(e){div.textContent=e.friendly?e.message:'تعذّر تشغيل النموذج المحلي: '+(e.message||e);}
+}
+// Phones: free chat through the app's server, off until the person turns it on, and it can be turned off again.
+function setupRemoteLLM(L){
+ const button=$('llmEnable'),note=$('llmStatus');
+ const OFF='🌐 تفعيل المحادثة الحرة عبر الخادم',NOTE='اختياري ومجاني: يُرسل سؤالك ومصادره إلى خادم التطبيق على Hugging Face، ولا يحفظها التطبيق. الحد المجاني نحو 3 أسئلة يوميًا لكل زائر، وقد يتأخر أول رد.';
+ const off=()=>{L.disableRemote();save('llmRemote',false);button.textContent=OFF;note.textContent=NOTE;status=null;checkStatus();};
+ const on=async()=>{
+  button.disabled=true;note.textContent='جارٍ الاتصال بالخادم…';
+  try{await L.enableRemote();save('llmRemote',true);button.textContent='إيقاف المحادثة عبر الخادم';note.textContent='✓ مفعّلة: أسئلتك الحرة تُرسل إلى الخادم حتى توقفها.';status=null;checkStatus();}
+  catch(e){note.textContent=e.message;}
+  button.disabled=false;
+ };
+ $('llmBar').hidden=false;button.textContent=OFF;note.textContent=NOTE;
+ button.onclick=()=>L.remote()?off():on();
+ if(load('llmRemote',false)===true)on();
+}
+// The enable button: shown on computers with WebGPU only; once enabled, later visits load it from the browser's copy.
+function setupLLM(){
+ const L=globalThis.LocalLLM;if(!L||!$('llmBar'))return;
+ if(L.remoteSupported?.())return setupRemoteLLM(L);
+ if(!L.supported())return;
+ $('llmBar').hidden=false;
+ const start=async()=>{
+  $('llmEnable').disabled=true;$('llmProg').hidden=false;$('llmStatus').textContent='جارٍ تجهيز النموذج…';
+  try{
+   await L.load((p,msg)=>{$('llmFill').style.width=Math.round(p*100)+'%';$('llmStatus').textContent=/loading model from cache/i.test(msg)?'تحميل من نسخة الجهاز…':`تحميل النموذج ${Math.round(p*100)}٪ — مرة واحدة فقط`;});
+   save('llm',true);$('llmProg').hidden=true;$('llmEnable').hidden=true;
+   $('llmStatus').textContent='✓ المحادثة الحرة مفعّلة: اسأل بحرية، والأوامر المعروفة تُنفَّذ كما هي.';
+   $('aiMode').textContent='الوضع المحلي + نموذج على جهازك';
+  }catch(e){
+   $('llmEnable').disabled=false;$('llmProg').hidden=true;
+   $('llmStatus').textContent=/no-gpu|webgpu|adapter/i.test(String(e.message||e))?'كارت الشاشة في هذا الجهاز لا يدعم تشغيل النموذج.':'تعذّر التحميل: '+(e.message||e)+' — تأكد من الإنترنت ثم أعد المحاولة.';
+  }
+ };
+ $('llmEnable').onclick=start;
+ if(load('llm',false)===true)start();
+}
+setupLLM();
 async function useLocal(text){setBusy(true);try{await localTurn(text);}finally{setBusy(false);}}
 async function ask(text){
  text=text.trim();if(!text||busy)return;
@@ -433,13 +553,13 @@ async function ask(text){
  try{
   for(let step=0;step<MAX_STEPS;step++){
    let r,data;
-   try{r=await fetch('api/assistant',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:history})});data=await r.json();}
+   try{r=await fetch(ASSISTANT_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:history})});data=await r.json();}
    catch{data={message:'تعذّر الوصول إلى خادم التطبيق.'};}
    if(!r?.ok){
     // Drop the unanswered question so the next try does not send it twice.
     if(step===0)history.pop();
     // Claude is unavailable (no key, no SDK, server unreachable): answer this one locally and stay local.
-    if(step===0&&(!r||['not_configured','no_sdk','network'].includes(data.error))){status={available:false};$('aiMode').textContent='الوضع المحلي · أوامر أساسية';bubble('note',data.message||'تعذّر الوصول إلى Claude، أجيب بالوضع المحلي.');setBusy(false);return useLocal(text);}
+    if(step===0&&(!r||['not_configured','no_sdk','network','daily_limit'].includes(data.error))){status={available:false};$('aiMode').textContent='الوضع المحلي · أوامر أساسية';bubble('note',data.message||'تعذّر الوصول إلى Claude، أجيب بالوضع المحلي.');setBusy(false);return useLocal(text);}
     bubble('note',data.message||'حدث خطأ في المساعد.');
     return;
    }
@@ -473,5 +593,5 @@ $('aiForm').onsubmit=e=>{e.preventDefault();ask($('aiInput').value);};
 $('aiInput').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();ask($('aiInput').value);}};
 $('aiPanel').onkeydown=e=>{if(e.key==='Escape')open(false);};
 for(const b of $('aiSuggest').querySelectorAll('button'))b.onclick=()=>ask(b.textContent);
-globalThis.TarteelAssistant={tools,ask,get history(){return history;}};
+globalThis.TarteelAssistant={tools,ask,get history(){return history;},llm:{sources:text=>llmSources(text,norm(text)),rules:LLM_RULES,nameOf,norm}};
 })();

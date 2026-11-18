@@ -282,9 +282,9 @@ test('the start-up guard stays quiet once the Quran has loaded',async()=>{
 // ---------- AI assistant ----------
 const assistant=require('./assistant.cjs');
 async function assistantServer(fake){
- assistant.setClient(fake);const server=require('./server.cjs').createServer();
+ assistant.resetLimits();assistant.setClient(fake);const server=require('./server.cjs').createServer();
  await new Promise(r=>server.listen(0,'127.0.0.1',r));const base=`http://127.0.0.1:${server.address().port}`;
- return {base,close:()=>new Promise(r=>server.close(r)),post:(body,headers={})=>fetch(base+'/api/assistant',{method:'POST',headers:{'Content-Type':'application/json',...headers},body:typeof body==='string'?body:JSON.stringify(body)})};
+ return {base,close:()=>new Promise(r=>server.close(r)),post:(body,headers={})=>fetch(base+'/api/assistant',{method:'POST',headers:{'Content-Type':'application/json',Origin:base,...headers},body:typeof body==='string'?body:JSON.stringify(body)})};
 }
 test('assistant proxy sends the fixed model, prompt and tools, and returns the reply unchanged',async()=>{
  let sent;const reply={content:[{type:'text',text:'سأفتح آية الكرسي.'},{type:'tool_use',id:'t1',name:'go_to_ayah',input:{surah:2,ayah:255,to_ayah:null}}],stop_reason:'tool_use',model:'claude-opus-5-5'};
@@ -712,4 +712,51 @@ test('misheard or misspelled surah names find the right surah; «مصر» is fou
  assert.equal(K.closestSurah(Q,'الصبر'),null);
  const r=K.searchQuran(S,'مصر');assert.deepEqual(r.results.map(x=>x.surah+':'+x.ayah),['2:61','10:87','12:21','12:99','43:51']);
  assert.equal(K.searchQuran(S,'تاب').results.some(x=>x.surah===4&&x.ayah===16),false);
+});
+test('«هل سورة يس مكية؟ وكم آية فيها؟» is answered with the surah facts, not read as an ayah search',async()=>{
+ const a=await require('./Training/app-sources.cjs').loadApp(),out=[];
+ a.ctx.document.getElementById('aiLog').append=(...x)=>out.push(...x);
+ const base=a.ctx.document.createElement;a.ctx.document.createElement=()=>Object.assign(base(),{parts:[],append(...x){this.parts.push(...x);},scrollIntoView(){}});
+ a.ctx.fetch=async()=>({ok:false,json:async()=>({})});
+ const reply=async q=>{await a.ctx.TarteelAssistant.ask(q);return out.at(-1).parts.map(p=>typeof p==='string'?p:p.textContent).join('');};
+ assert.match(await reply('هل سورة يس مكية؟ وكم آية فيها؟'),/مكية، عدد آياتها 83/);
+ assert.match(await reply('الآية اللي فيها'),/الآية بتقول إيه/);
+ for(const q of ['كيف أحفظ القرآن بسرعة؟','ازاي اراجع حفظي؟','أنا بنسى اللي بحفظه'])assert.match(await reply(q),/إخفاء الآية للتسميع/,q);
+ assert.doesNotMatch(await reply('كيف حفظ الله القرآن؟'),/إخفاء الآية للتسميع/);
+ // The local model's sources: tajweed rules, hadith terms and facts are passed in; question words are not searched.
+ const src=a.sources('ما هو الإقلاب');assert.match(src,/من أحكام التجويد: إقلاب/);assert.doesNotMatch(src,/كلمة «/);
+ assert.match(a.sources('ما الفرق بين سورة طه وسورة ق'),/معلومات سورة طه:[\s\S]*معلومات سورة ق:/);
+ assert.match(a.sources('أين وردت كلمة مصر في القرآن'),/كلمة «مصر» وردت في 5 آيات: سورة البقرة 61، سورة يونس 87/);
+});
+test('phone free chat: off by default, sends only question and sources, streams, and drops broken replies',async()=>{
+ const load=(fetch,url='https://server.example/')=>{const ctx={navigator:{userAgent:'Android'},localStorage:{getItem:k=>k==='tarteel:llmRemoteUrl'?url:null},fetch,setTimeout,clearTimeout,AbortController,AbortSignal,TextDecoder,encodeURIComponent,JSON};ctx.globalThis=ctx;vm.runInNewContext(fs.readFileSync(require.resolve('./llm.js'),'utf8'),ctx);return ctx.LocalLLM;};
+ const sse=(...events)=>new Response(events.map(([k,d])=>`event: ${k}\ndata: ${JSON.stringify(d)}\n\n`).join(''),{status:200});
+ const sent=[];let reply=()=>sse(['generating',['سورة ']],['generating',['سورة مكية']],['complete',['سورة مكية']]);
+ const L=load(async(u,o={})=>{sent.push({u,o});if(u.endsWith('/gradio_api/info'))return new Response('{}');if(u.endsWith('/gradio_api/call/ask'))return new Response(JSON.stringify({event_id:'e1'}));return reply();});
+ assert.equal(L.supported(),false);assert.equal(L.remoteSupported(),true);assert.equal(L.ready(),false);
+ await L.enableRemote();assert.equal(L.ready(),true);
+ const seen=[];assert.equal(await L.askRemote({question:'س',sources:'م',history:[]},t=>seen.push(t)),'سورة مكية');assert.deepEqual(seen,['سورة ','سورة مكية','سورة مكية']);
+ assert.deepEqual(JSON.parse(sent.at(-2).o.body),{data:['س','م','[]']});assert.equal(sent.at(-1).u,'https://server.example/gradio_api/call/ask/e1');
+ reply=()=>sse(['generating',['hello']]);assert.equal(await L.askRemote({question:'س'}),'');
+ reply=()=>sse(['error',null]);await assert.rejects(L.askRemote({question:'س'}),e=>e.friendly);
+ await assert.rejects(L.askRemote({question:'س'.repeat(501)}),e=>e.friendly);
+ reply=()=>sse(['error',{error:'You have exceeded your ZeroGPU runs limit.'}]);await assert.rejects(L.askRemote({question:'س'}),e=>e.friendly&&/المجانية اليوم/.test(e.message));
+ assert.equal(load(async()=>new Response(''),'').remoteSupported(),true);
+ if(fs.existsSync('./Space/rules.txt')){const a=await require('./Training/app-sources.cjs').loadApp();assert.equal(fs.readFileSync('./Space/rules.txt','utf8').trim(),a.rules().trim());}
+});
+test('assistant serves the app sites and phone app, refuses others, and stops at its limits',async()=>{
+ let calls=0;const s=await assistantServer({beta:{messages:{create:async()=>{calls++;return {content:[{type:'text',text:'نعم'}],stop_reason:'end_turn',model:'m'};}}}});
+ const body={messages:[{role:'user',content:'س'}]};
+ try{
+  for(const Origin of ['https://telawa-exame.netlify.app','https://adelaziz2026.github.io','https://localhost']){
+   const pre=await fetch(s.base+'/api/assistant',{method:'OPTIONS',headers:{Origin,'Access-Control-Request-Method':'POST'}});assert.equal(pre.status,204);assert.equal(pre.headers.get('access-control-allow-origin'),Origin);
+   const r=await s.post(body,{Origin});assert.equal(r.status,200,Origin);assert.equal(r.headers.get('access-control-allow-origin'),Origin);
+  }
+  const other=await s.post(body,{Origin:'https://evil.example'});assert.equal(other.status,403);assert.equal(other.headers.get('access-control-allow-origin'),null);
+  assert.equal((await fetch(s.base+'/api/assistant',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).status,403);
+  assert.equal(calls,3);
+  assistant.resetLimits();let last;for(let i=0;i<11;i++)last=await s.post(body,{'CF-Connecting-IP':'203.0.113.9'});
+  assert.equal(last.status,429);assert.equal((await last.json()).error,'rate_limited');
+  assert.equal((await s.post(body,{'CF-Connecting-IP':'203.0.113.10'})).status,200);
+ }finally{assistant.resetLimits();await s.close();assistant.setClient(null);}
 });
