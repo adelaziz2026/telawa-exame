@@ -539,23 +539,38 @@ const LLM_RULES='أنت مساعد في تطبيق «اختبار التلاوة
  +'لا تحكم على صحة حديث ولا تُفتِ في الأحكام الشرعية؛ وجّه السائل لعالم موثوق. '
  +'إن لم يكن الجواب في المصادر فقل بوضوح إنك لا تعرفه من المصادر المتاحة، واقترح أمرًا من أوامر التطبيق مثل «ابحث عن كلمة…» أو «تفسير الآية» أو «افتح سورة…».';
 let llmHistory=[];
+// Every server answer uses one of the visitor's limited runs, so a repeated question is answered from this device.
+const ANSWERS_KEY='tarteel:llmAnswers',ANSWER_DAYS=30,ANSWERS_KEPT=60;
+const answerKey=(...parts)=>{const s=parts.join('\n');let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}return (h>>>0).toString(36)+':'+s.length;};
+const savedAnswers=()=>{try{const list=JSON.parse(localStorage.getItem(ANSWERS_KEY)||'[]');return Array.isArray(list)?list.filter(x=>x&&x.k&&x.a&&Date.now()-x.t<ANSWER_DAYS*864e5):[];}catch{return [];}};
+const rememberAnswer=(k,a)=>{try{localStorage.setItem(ANSWERS_KEY,JSON.stringify([{k,a,t:Date.now()},...savedAnswers().filter(x=>x.k!==k)].slice(0,ANSWERS_KEPT)));}catch{}};
 async function llmTurn(text,t){
  const div=bubble('assistant','…');div.classList.add('ai-llm');
  try{
-  const sources=llmSources(text,t);
+  let sources=llmSources(text,t);
   // Earlier turns only for a follow-up («وكم عدد آياتها؟»: short, or starting with «و», and naming no surah of its own);
   // otherwise a previous answer's wording leaks into an unrelated new question.
   const followUp=(/^(?:و|طب |طيب )/.test(t)||t.split(' ').length<=4)&&!/(?:^|\n)معلومات سورة /.test(sources);
-  const earlier=followUp?llmHistory.slice(-4):[],onServer=LocalLLM.remote();
+  const onServer=LocalLLM.remote(),asksOpen=/(?:^| )(?:الايه|ايه|هذه|هذا|دي|ده)(?: |$)/.test(t);
+  // The open ayah goes to the server only when the question is about it.
+  const subject=sources.split('\n').filter(x=>!x.startsWith('الآية المفتوحة في التطبيق:')).join('\n');
+  if(onServer&&!asksOpen)sources=subject;
+  const earlier=followUp&&(!onServer||!subject||/^(?:و|طب |طيب )/.test(t))?llmHistory.slice(-4):[];
   const onToken=partial=>{div.textContent=partial;};
+  const show=(reply,tag)=>{div.textContent=reply;div.append(Object.assign(document.createElement('small'),{className:'ai-llm-tag',textContent:tag}));llmHistory.push({role:'user',content:text},{role:'assistant',content:reply});speak(reply);};
+  const key=answerKey(t,sources,JSON.stringify(earlier));
+  if(onServer){
+   // The model may answer only from sources, so without any it could only say it does not know: keep the run.
+   if(!subject&&!asksOpen&&!earlier.length){div.textContent='لم أجد هذا في مصادر التطبيق، فلم أستهلك من أسئلتك. اذكر اسم السورة أو الحكم، أو قل «ابحث عن كلمة …».';return;}
+   const saved=savedAnswers().find(x=>x.k===key);
+   if(saved){show(saved.a,'💾 إجابة محفوظة على جهازك — لم تستهلك سؤالًا، وقد تخطئ فتأكد من المصدر');return;}
+  }
   const messages=[{role:'system',content:LLM_RULES},...earlier,{role:'user',content:(sources?`المصادر:\n${sources}\n\n`:'المصادر: لا يوجد.\n\n')+'السؤال: '+text}];
   const reply=onServer?await LocalLLM.askRemote({question:text,sources,history:earlier},onToken):await LocalLLM.answer(messages,onToken);
   // An empty reply is one the model could not finish reliably (see LocalLLM.broken): nothing of it is shown or kept.
   if(!reply){div.textContent='لم أستطع صياغة إجابة موثوقة لهذا السؤال. جرّب أمرًا مثل «ابحث عن …» أو «تفسير الآية» أو «افتح سورة …».';return;}
-  div.textContent=reply;
-  div.append(Object.assign(document.createElement('small'),{className:'ai-llm-tag',textContent:(onServer?'🌐 نموذج على خادم التطبيق':'🧠 نموذج محلي على جهازك')+' — قد يخطئ، فتأكد من المصدر'}));
-  llmHistory.push({role:'user',content:text},{role:'assistant',content:reply});
-  speak(reply);
+  if(onServer)rememberAnswer(key,reply);
+  show(reply,(onServer?'🌐 نموذج على خادم التطبيق':'🧠 نموذج محلي على جهازك')+' — قد يخطئ، فتأكد من المصدر');
  }catch(e){
   div.textContent=e.friendly?e.message:'تعذّر تشغيل النموذج المحلي: '+(e.message||e);
   if(e.quota){$('llmStatus').textContent='الحد المجاني انتهى الآن. يعمل البحث والأوامر، وستُجرَّب الخدمة لاحقًا.';$('aiMode').textContent='الوضع المحلي · أوامر أساسية';}
@@ -577,8 +592,18 @@ function setupRemoteLLM(L){
  const sign=$('hfSign'),signUI=()=>{const user=L.hfUser?.()||'';sign.hidden=!L.signInSupported?.();sign.textContent=user?`تسجيل الخروج من Hugging Face (${user})`:'🤗 تسجيل الدخول بحساب Hugging Face لأسئلة أكثر';};
  if(sign){
   signUI();
+  let devicePage='';
   sign.onclick=async()=>{
+   if(devicePage){L.openSignInPage(devicePage);return;}
    if(L.hfUser()){L.signOut();signUI();note.textContent='تم تسجيل الخروج من Hugging Face على هذا الجهاز.';return;}
+   if(L.usesDeviceSignIn?.()){
+    sign.disabled=true;note.textContent='جارٍ طلب رمز الدخول…';
+    try{
+     const name=await L.deviceSignIn(({code,url})=>{devicePage=url;try{navigator.clipboard?.writeText(code)?.catch?.(()=>{});}catch{}sign.disabled=false;sign.textContent='فتح صفحة Hugging Face';note.textContent=`رمز الدخول: ${code}. افتح الصفحة واكتب الرمز، ثم سجّل الدخول ووافق وارجع إلى التطبيق.`;});
+     devicePage='';signUI();on();bubble('note',`تم تسجيل الدخول باسم ${name}. سيطلب التطبيق الحصة الأكبر المتاحة لحسابك المجاني.`);
+    }catch(e){devicePage='';sign.disabled=false;signUI();note.textContent=e.friendly?e.message:'تعذّر إكمال تسجيل الدخول.';}
+    return;
+   }
    sign.disabled=true;note.textContent='جارٍ فتح صفحة Hugging Face…';
    try{await L.signIn();}catch{note.textContent='تعذّر فتح صفحة تسجيل الدخول.';sign.disabled=false;}
   };

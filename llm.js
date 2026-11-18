@@ -29,6 +29,13 @@ const remoteOpen=()=>remoteOn&&Date.now()>=quotaUntil;
 const native=!!scope.Capacitor?.isNativePlatform?.();
 const phone=/Android|iPhone|iPad|iPod|Mobile/i.test(scope.navigator?.userAgent||'')||!!scope.matchMedia?.('(pointer: coarse)').matches;
 let engine=null,loading=null;
+async function keepSignIn(token){
+ let name='';
+ try{const r=await scope.fetch(HF+'/oauth/userinfo',{headers:{authorization:'Bearer '+token.access_token}});if(r.ok)name=String((await r.json()).preferred_username||'').slice(0,60);}catch{}
+ writeJson('localStorage',AUTH_KEY,{token:token.access_token,expires:Date.now()+1000*(Number(token.expires_in)||28800),name});
+ quotaUntil=0;
+ return name||'حسابك';
+}
 const LocalLLM={
  // Off for everyone: in tests a small model was too slow and sometimes invented answers (see Document/). It can be tried on
  // a computer with WebGPU by setting localStorage «tarteel:llmLab» to true; phones never see it.
@@ -37,7 +44,9 @@ const LocalLLM={
  remoteSupported:()=>!!remoteUrl(),
  remote:remoteOpen,
  remoteEnabled:()=>remoteOn,
- signInSupported:()=>!native&&!!scope.crypto?.subtle&&!!scope.location?.origin,
+ signInSupported:()=>native?!!scope.Capacitor?.nativePromise:!!scope.crypto?.subtle&&!!scope.location?.origin,
+ usesDeviceSignIn:()=>native,
+ openSignInPage(url){scope.location.assign(url);},
  hfUser:()=>{const a=auth();return a?a.name||'حسابك':'';},
  signOut(){writeJson('localStorage',AUTH_KEY,null);quotaUntil=0;},
  async signIn(){
@@ -61,11 +70,28 @@ const LocalLLM={
    if(r.ok)token=await r.json();
   }catch{}
   if(!token?.access_token)throw friendly('تعذّر إكمال تسجيل الدخول. حاول مرة أخرى.');
-  let name='';
-  try{const r=await scope.fetch(HF+'/oauth/userinfo',{headers:{authorization:'Bearer '+token.access_token}});if(r.ok)name=String((await r.json()).preferred_username||'').slice(0,60);}catch{}
-  writeJson('localStorage',AUTH_KEY,{token:token.access_token,expires:Date.now()+1000*(Number(token.expires_in)||28800),name});
-  quotaUntil=0;
-  return name||'حسابك';
+  return keepSignIn(token);
+ },
+ // The phone app: a short code is approved in the phone's browser, so no password or sign-in page runs inside the app.
+ // Starting needs the native request, because Hugging Face's device endpoint does not allow calls from web pages.
+ async deviceSignIn(onCode){
+  let start;
+  try{
+   const r=await scope.Capacitor.nativePromise('CapacitorHttp','request',{url:HF+'/oauth/device',method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},data:new URLSearchParams({client_id:HF_CLIENT,scope:'openid profile'}).toString(),responseType:'json'});
+   if(r.status===200)start=typeof r.data==='string'?JSON.parse(r.data):r.data;
+  }catch{}
+  if(!start?.device_code||!start.user_code)throw friendly('تعذّر بدء تسجيل الدخول. تحقق من الإنترنت وحاول مرة أخرى.');
+  onCode({code:start.user_code,url:start.verification_uri_complete||start.verification_uri});
+  const end=Date.now()+1000*(Number(start.expires_in)||300);let wait=Math.max(1,Number(start.interval)||5);
+  while(Date.now()<end){
+   await new Promise(done=>scope.setTimeout(done,wait*1000));
+   let r,data;
+   try{r=await scope.fetch(HF+'/oauth/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'urn:ietf:params:oauth:grant-type:device_code',device_code:start.device_code,client_id:HF_CLIENT})});data=await r.json();}catch{continue;}
+   if(r.ok&&data.access_token)return keepSignIn(data);
+   if(data.error==='slow_down')wait+=5;
+   else if(data.error!=='authorization_pending')throw friendly(data.error==='access_denied'?'تم رفض تسجيل الدخول.':'تعذّر إكمال تسجيل الدخول. حاول مرة أخرى.');
+  }
+  throw friendly('انتهت مهلة رمز الدخول. اطلب رمزًا جديدًا.');
  },
  disableRemote(){remoteOn=false;quotaUntil=0;},
  // A sleeping free server needs a while to wake, so a failed check is reported as «try again», not as an error.

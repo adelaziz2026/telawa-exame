@@ -461,6 +461,22 @@ test('Hugging Face sign-in uses PKCE, keeps the token off other servers, and can
  localStorage.setItem('tarteel:llmRemoteUrl','https://other.example');sent.length=0;await back.LocalLLM.askRemote({question:'س'});for(const c of sent)assert.equal(c.o.headers?.authorization,undefined);localStorage.removeItem('tarteel:llmRemoteUrl');
  back.LocalLLM.signOut();assert.equal(back.LocalLLM.hfUser(),'');sent.length=0;await back.LocalLLM.askRemote({question:'س'});for(const c of sent)assert.equal(c.o.headers?.authorization,undefined);
 });
+test('the server is asked only when needed: no sources and repeated questions cost no run',async()=>{
+ const real={'data/quran.json':require('./data/quran.json'),'data/simple.json':require('./data/simple.json')};
+ const h=await appHarness({fetch:async u=>({ok:true,json:async()=>real[u]})});h.ctx.QuranKnowledge=require('./knowledge.js');
+ const asked=[];h.ctx.LocalLLM={supported:()=>false,remoteSupported:()=>false,ready:()=>true,remote:()=>true,broken:()=>false,askRemote:async q=>{asked.push(q);return 'جواب من المصادر';}};
+ const spoken=assistantHarness(h,[]),m=new Map;h.ctx.localStorage={getItem:k=>m.get(k)??null,setItem:(k,v)=>m.set(k,String(v))};
+ await h.ctx.TarteelAssistant.ask('زززز ططططط قققق؟');assert.equal(asked.length,0);
+ await h.ctx.TarteelAssistant.ask('ما الحكمة من ذكر الصبر؟');assert.equal(asked.length,1);assert.doesNotMatch(asked[0].sources,/الآية المفتوحة/);assert.equal(spoken.at(-1).text,'جواب من المصادر');
+ await h.ctx.TarteelAssistant.ask('ما الحكمة من ذكر الصبر؟');assert.equal(asked.length,1);assert.equal(spoken.at(-1).text,'جواب من المصادر');
+});
+test('the phone app signs in with a device code approved in the browser',async()=>{
+ const m=new Map,localStorage={getItem:k=>m.get(k)??null,setItem:(k,v)=>m.set(k,String(v)),removeItem:k=>m.delete(k)};let polls=0,native,shown;
+ const ctx={navigator:{userAgent:'Android'},Capacitor:{isNativePlatform:()=>true,nativePromise:async(p,a,o)=>{native={p,a,o};return {status:200,data:{device_code:'d1',user_code:'ABCD-1234',verification_uri:'https://hf.co/oauth/device',expires_in:60,interval:0}};}},localStorage,setTimeout:f=>setTimeout(f,0),clearTimeout,AbortController,AbortSignal,TextDecoder,TextEncoder,URLSearchParams,encodeURIComponent,JSON,fetch:async u=>{if(String(u).endsWith('/oauth/userinfo'))return new Response(JSON.stringify({preferred_username:'reader'}));polls++;return polls<2?new Response(JSON.stringify({error:'authorization_pending'}),{status:400}):new Response(JSON.stringify({access_token:'hf_oauth_device',expires_in:3600}));}};ctx.globalThis=ctx;
+ vm.runInNewContext(fs.readFileSync(require.resolve('./llm.js'),'utf8'),ctx);const L=ctx.LocalLLM;
+ assert.equal(L.signInSupported(),true);assert.equal(L.usesDeviceSignIn(),true);
+ assert.equal(await L.deviceSignIn(x=>{shown=x;}),'reader');assert.equal(shown.code,'ABCD-1234');assert.equal(shown.url,'https://hf.co/oauth/device');assert.equal(native.p,'CapacitorHttp');assert.match(native.o.data,/scope=openid\+profile/);assert.equal(polls,2);assert.equal(L.hfUser(),'reader');
+});
 test('Claude runs only after its button is pressed, and only when the server is ready',async()=>{
  const h=await appHarness(),spoken=assistantHarness(h,[]);let configured=false,posts=0;
  h.ctx.fetch=async(u,o)=>{if(o?.method==='POST'){posts++;return {ok:true,json:async()=>({content:[{type:'text',text:'رد Claude'}],stop_reason:'end_turn'})};}return {ok:true,json:async()=>({available:true,configured})};};
