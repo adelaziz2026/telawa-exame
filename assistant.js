@@ -268,7 +268,8 @@ async function knowledgeTurn(t,raw=t){
  if(!lastTafsir&&/^(?:طب |طيب |و)?(?:كمل|اكمل|كمل التفسير|باقي التفسير)$/.test(t))return 'لسه ما فسّرتلكش آية عشان أكمّل. قول مثلًا «فسّر الآية دي» أو «تفسير ابن كثير لآية الكرسي».';
  if(!lastResults?.length&&(/نتيجه(?: رقم)? \d+/.test(t)||/^(?:افتحها|افتحهالي|افتحهولي|وديني عليها|روحلها)$/.test(t)))return 'مفيش نتايج بحث لسه أفتح منها. دوّر الأول، مثلًا «ابحث عن كلمة الصبر» أو «فين الآية اللي بتقول…».';
  if(lastResults?.length){
-  const n=+(t.match(/نتيجه(?: رقم)? (\d+)/)?.[1]||0)||(/(?:افتح|وديني|روح)/.test(t)&&ORDINALS[t.split(' ').find(w=>ORDINALS[w])])||(/^(?:افتحها|افتحهالي|افتحهولي|وديني عليها|روحلها)$/.test(t)?1:0);
+  // A bare number or ordinal right after a search picks that result («1»، «رقم 2»، «الثانية»).
+  const n=+(t.match(/نتيجه(?: رقم)? (\d+)/)?.[1]||t.match(/^(?:رقم )?(\d+)$/)?.[1]||0)||(Object.hasOwn(ORDINALS,t)&&ORDINALS[t])||(/(?:افتح|وديني|روح)/.test(t)&&ORDINALS[t.split(' ').find(w=>ORDINALS[w])])||(/^(?:افتحها|افتحهالي|افتحهولي|وديني عليها|روحلها)$/.test(t)?1:0);
   if(n){const r=lastResults[n-1];if(!r)return `عندي ${lastResults.length} نتايج بس.`;const out=act('go_to_ayah',{surah:r.surah,ayah:r.ayah,to_ayah:null});return `فتحتلك ${out.opened}.`;}
  }
  // Tajweed: a rule explained («يعني ايه الإخفاء؟»، «اشرحلي القلقلة»، «احكام النون الساكنة»).
@@ -452,7 +453,7 @@ async function localTurn(text){
   if(/^(السلام|سلام|مرحبا|اهلا|هلا|صباح|مساء|ازيك|ازاي)/.test(t)&&!/(تعمل|تقدر|تساعد)/.test(t))said.push('وعليكم السلام ورحمة الله وبركاته! أهلًا بيك. '+CAN);
   else if(/(ماذا|كيف|شو|ايش|ايه|ازاي).*(تستطيع|تقدر|تساعد|يمكنك|تعمل|بتعمل)|مساعده|ساعدني/.test(t))said.push(CAN);
   else if(globalThis.LocalLLM?.ready()&&quranWordOnly(t))said.push(await knowledgeTurn('ابحث عن '+t,text));
-  else if(globalThis.LocalLLM?.ready()){await llmTurn(text,t);return;}
+  else if(globalThis.LocalLLM?.ready()&&!/^\d+$/.test(t)){await llmTurn(text,t);return;}
   else if(t.split(' ').length<=2&&tools.search_quran({query:t,phrase:t.includes(' ')}).ayat_count){said.push(await knowledgeTurn('ابحث عن '+t,text));}
   else said.push('معلش، مفهمتش طلبك في الوضع المحلي. '+CAN+' وللمحادثة الحرة استخدم زر التفعيل أعلى المحادثة.');
  }

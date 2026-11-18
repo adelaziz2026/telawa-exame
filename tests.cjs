@@ -426,6 +426,11 @@ test('assistant answers whether a word is in the Quran, and never sends visitors
  assert.match(await say('هل كلمة الكوثر موجودة في سورة البقرة'),/«الكوثر» مش موجودة في سورة البقرة/);
  assert.match(await say('في أي سورة وردت كلمة الكوثر'),/^«الكوثر» موجودة في سورة واحدة وآية واحدة: سورة الكوثر \(آية واحدة\)/);
  assert.match(await say('افتح النتيجة 1'),/^فتحتلك سورة الكوثر، الآية 1\.$/);
+ assert.match(await say('1'),/^فتحتلك سورة الكوثر، الآية 1\.$/);
+ assert.match(await say('١'),/^فتحتلك سورة الكوثر، الآية 1\.$/);
+ assert.match(await say('رقم 1'),/^فتحتلك سورة الكوثر، الآية 1\.$/);
+ assert.match(await say('الاولى'),/^فتحتلك سورة الكوثر، الآية 1\.$/);
+ assert.match(await say('9'),/^عندي 1 نتايج بس\.$/);
  assert.match(await say('ابحث عن كلمة الصبر في كل السور'),/^«الصبر» موجودة في \d+ سورة? ?.*سورة البقرة \(/);
  assert.match(await say('انهي سورة فيها قل اعوذ برب الفلق'),/^دي سورة الفلق، الآية 1/);
  assert.match(await say('سورة الكهف فيها كام آية'),/110/);
