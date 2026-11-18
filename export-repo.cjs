@@ -14,6 +14,8 @@ fs.rmSync(out, {recursive: true, force: true});
 fs.mkdirSync(out);
 for (const file of files) { fs.mkdirSync(path.dirname(path.join(out, file)), {recursive: true}); fs.copyFileSync(path.join(root, file), path.join(out, file)); }
 for (const folder of folders) fs.cpSync(path.join(root, folder), path.join(out, folder), {recursive: true});
+// The one public page kept with the Play files: Google Play links to it. Nothing else from Mobile/ is copied.
+fs.copyFileSync(path.join(root, 'Mobile', 'google-play', 'privacy-policy.html'), path.join(out, 'privacy-policy.html'));
 // Safety net: nothing secret may slip in.
 const all = [];
 const walk = dir => { for (const e of fs.readdirSync(dir, {withFileTypes: true})) { const p = path.join(dir, e.name); if (e.isDirectory()) walk(p); else all.push(p); } };
