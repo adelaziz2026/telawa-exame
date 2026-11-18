@@ -199,7 +199,7 @@ function repeatIn(t){
  return [1,3,5].reduce((a,b)=>Math.abs(b-n)<Math.abs(a-n)?b:a);
 }
 // Local replies are in Egyptian colloquial Arabic, matching the Egyptian voice.
-const CAN='أقدر من غير إنترنت أفتحلك سورة أو آية («افتح سورة الكهف»، «آية الكرسي»، «البقرة من آية 1 لحد 5»)، وأشغّلك التلاوة بصوت أي شيخ («شغّلها بصوت الحصري 3 مرات»)، وأخبّيلك الآية عشان تسمّع من حفظك، وأروح للآية اللي بعدها أو اللي قبلها، وأورّيك الآيات اللي محتاجة مراجعة، وأشرحلك أخطاء آخر تسميع.';
+const CAN='أقدر من غير إنترنت أفتحلك سورة أو آية («افتح سورة الكهف»، «آية الكرسي»، «البقرة من آية 1 لحد 5»)، وأشغّلك التلاوة بصوت أي شيخ («شغّلها بصوت الحصري 3 مرات»)، وأخبّيلك الآية عشان تسمّع من حفظك، وأروح للآية اللي بعدها أو اللي قبلها، وأورّيك الآيات اللي محتاجة مراجعة، وأشرحلك أخطاء آخر تسميع، وأدوّرلك على أي كلمة في القرآن أو في سورة معيّنة («كلمة الصبر في سورة البقرة»، «في أي سورة وردت كلمة الكوثر»).';
 // Runs one tool through the same path as Claude's tool calls, so the chat shows the same action chips.
 function act(name,input){const out=tools[name](input);chip(actionLabel[name]||name);return out;}
 // Knowledge requests in local mode, in Egyptian or standard phrasing (t is normalised, raw is what the user typed):
@@ -220,6 +220,20 @@ const nameOf=n=>QuranCompare.normalize(surahName(n));
 const count=(n,one,two,few,unit)=>n===1?one:n===2?two:n<=10?`${n} ${few}`:`${n} ${unit}`;
 const ayat=n=>count(n,'آية واحدة','آيتين','آيات','آية'),times=n=>count(n,'مرة واحدة','مرتين','مرات','مرة');
 const refs=list=>list.map((x,i)=>`${i+1}) ${nameOf(x.surah)} ${x.ayah}`).join('، ');
+// «هل سفيه موجودة بالقرآن»، «هل ذكرت مصر في القرآن»: one or two words asked about, not a question that merely ends in «القرآن».
+const WORD_IN_QURAN=/^(?!كم |كام |ما |ايه |مين |عدد |اول |اخر |اطول |اقصر )(?:هل )?(?:(?:يوجد|توجد|فيه|ورد|وردت|ذكر|ذكرت|جاء|جاءت|جت) )?(?:(?:كلمه|لفظ|لفظه) )?(\S+(?: \S+)?) (?:(?:موجوده?|مذكوره?) )?(?:بالقران|بالمصحف|(?:في|فى) (?:القران|المصحف))(?: الكريم)?$/;
+// A word asked about inside one surah, or across the surahs. One or two words only, so a quoted ayah or a command is left alone.
+const ASK_WORD='(?!(?:افتح|افتحلي|شغل|شغلي|اقرا|اقرالي|سمع|سمعني|روح|وديني|تفسير|فسر|معني|ايه|الايه|ايات|الايات|اخر|اول|كم|كام|عدد|ما|ماذا|مين|ابحث|ابحثلي|دور|دورلي|فين|اطول|اقصر|هل|ترتيب|اسم|احكام|تجويد)(?: |$))([^\\s\\d]+(?: [^\\s\\d]+)?)';
+const WORD_NOUN='(?:(?:كلمه|لفظ|لفظه) )?',WORD_LEAD='(?:هل )?(?:(?:يوجد|توجد|فيه|ورد|وردت|ذكر|ذكرت|جاء|جاءت|جت|اتذكرت) )?'+WORD_NOUN,WORD_STATE='(?:(?:موجوده?|مذكوره?|وردت|ذكرت|جت) )?';
+const WORD_IN_SURAH=new RegExp(`^${WORD_LEAD}${ASK_WORD} ${WORD_STATE}(?:في|فى|ب) ?سوره (?!\\d)(.+)$`);
+const SURAH_HAS_WORD=[new RegExp(`^(?:هل )?(?:(?:في|فى) )?سوره (?!\\d)(.+?) (?:(?:فيها|فيه|بها) )?(?:كلمه|لفظ|لفظه) ${ASK_WORD}$`),new RegExp(`^(?:هل )?سوره (?!\\d)(\\S+(?: \\S+)?) (?:فيها|فيه|بها) ${ASK_WORD}$`)];
+const WORD_ACROSS_SURAHS=[new RegExp(`^(?:(?:في|فى) )?(?:اي|انهي|ايه) (?:سوره|سور|السور)(?: (?:اللي )?(?:وردت|ورد|ذكرت|ذكر|جت|جاءت|موجوده?))?(?: (?:فيها|فيه|بها))? ${WORD_NOUN}${ASK_WORD}$`),new RegExp(`^(?:هل )?(?:(?:ابحث|ابحثلي|دور|دورلي) (?:(?:عن|علي) )?)?${WORD_NOUN}${ASK_WORD} ${WORD_STATE}(?:في|فى) (?:(?:اي|انهي) سوره|(?:كل |جميع )?السور|سور القران)$`),new RegExp(`^السور اللي فيها ${WORD_NOUN}${ASK_WORD}$`)];
+function surahWordAsk(t){
+ const one=t.match(WORD_IN_SURAH);if(one){const surah=findSurahIn('سوره '+one[2]);return surah?{query:one[1],surah}:null;}
+ for(const re of SURAH_HAS_WORD){const m=t.match(re);if(m){const surah=findSurahIn('سوره '+m[1]);if(surah)return {query:m[2],surah};}}
+ for(const re of WORD_ACROSS_SURAHS){const m=t.match(re);if(m)return {query:m[1],across:true};}
+ return null;
+}
 function quoteIn(t,raw){
  const q=String(raw).match(/[«"“]([^»"”]{4,})[»"”]/)?.[1];if(q)return norm(q);
  return (t.match(/قوله تعالي (.+)$/)||t.match(/(?:الايه|ايه|اللي)(?: اللي)? (?:بتقول|بيقول|تقول|يقول|بتبدا ب|فيها|فيه) (.+)$/)||t.match(/(?:انهي|اي|ايه) سوره (?:فيها|فيه|بتقول|اللي فيها) (.+)$/))?.[1]?.replace(/ (?:في|فى) (?:القران|المصحف).*$/,'').trim()||null;
@@ -304,6 +318,20 @@ async function knowledgeTurn(t,raw=t){
  // Advice on memorising and reviewing: a fixed, reviewed answer about the app's own tools (the small model does this poorly).
  if(/(?:كيف|ازاي|طريقه|نصيحه|نصايح|نصائح|خطه|عايز احفظ).*(?:احفظ|الحفظ|حفظي|حفظت|اراجع|المراجعه|اثبت)|(?:بنسي|انسي|نسيت).*(?:احفظ|حفظ)/.test(t)&&!/حفظ الله|جمع القران/.test(t))
   return 'هذه نصائح عامة من طريقة عمل التطبيق، لا فتوى ولا منهج ملزم: اختر آيات قليلة، واستمع لها مع التكرار، ثم فعّل «إخفاء الآية للتسميع» واقرأها بصوتك، وراجع الكلمات المختلفة واستمع لنطقها الصحيح. وزر «🧠 اقترح آية للمراجعة» وقائمة «آيات تحتاج مراجعة» يساعدانك على تثبيت الأضعف أولًا. وللخطة المناسبة لك وإتقان التلاوة، اعرض حفظك على معلم متقن.';
+ // A word in one surah, or which surahs have it. The whole Mushaf is counted, not just the first results.
+ const wordAsk=wantsTafsir?null:surahWordAsk(t);
+ if(wordAsk?.surah)return knowledgeTurn(`هل كلمه ${wordAsk.query} موجوده في سوره ${wordAsk.surah}`,raw);
+ if(wordAsk){
+  const {query}=wordAsk,said=shown(query),search=partial=>QuranKnowledge.searchQuran(simple,query,{partial,phrase:!partial&&query.includes(' '),limit:6236});
+  let r=search(false),close=false;if(!r.total&&!query.includes(' ')&&query.length>=3){r=search(true);close=r.total>0;}
+  chip(actionLabel.search_quran);
+  if(!r.total)return `«${said}» مش موجودة في أي سورة بالشكل ده. جرّب جزء من الكلمة أو من غير «ال».`;
+  lastResults=r.results.slice(0,15);
+  const bySurah=new Map;for(const x of r.results)bySurah.set(x.surah,(bySurah.get(x.surah)||0)+1);
+  const list=[...bySurah].slice(0,10).map(([s,n])=>`${nameOf(s)} (${ayat(n)})`).join('، ')+(bySurah.size>10?'، وغيرها':'');
+  const first=[...bySurah.keys()][0];
+  return `${close?`«${said}» مش موجودة بالشكل ده، لكن كلمات قريبة منها`:`«${said}»`} موجودة في ${count(bySurah.size,'سورة واحدة','سورتين','سور','سورة')} و${ayat(r.total)}: ${list}. قول مثلًا «كلمة ${said} في ${nameOf(first)}» وأجيبلك آياتها.`;
+ }
  // 2. An ayah quoted from memory: find it, and explain it if asked.
  // Not «وكم آية فيها؟» (how many ayat a surah has): that is a question about the surah.
  if(/(?:الايه|ايه|اللي)(?: اللي)? (?:بتقول|بيقول|تقول|فيها)$/.test(t)&&!/(?:كم|كام) (?:ايه|ايات) فيها$/.test(t))return 'الآية بتقول إيه؟ قول جزء منها، مثلًا: «فين الآية اللي بتقول وجعلنا من الماء كل شيء حي».';
@@ -348,19 +376,30 @@ async function knowledgeTurn(t,raw=t){
   return `لقيت ${count(r.total,'حديث واحد','حديثين','أحاديث','حديث')} فيه «${query}» في ${where}. ${r.total>1?'أولهم ':''}من ${h.book} رقم ${h.number}${grade}: ${h.text}`;
  }
  // 7. Word search, in the whole Mushaf or one surah, with how many times it comes.
- if(/(ابحث|(?:^| )(?:دور|دورلي)(?: |$)|(?:^| )فين(?: |$)|كام مره|عدد مرات|وردت|اتذكرت|اتكررت|جت كلمه|^(?:كلمه|لفظ|لفظه) |^\S+(?: \S+)? (?:في|فى) (?:القران|المصحف)$)/.test(t)){
-  const inPart=t.match(/ (?:في|فى) (سوره .+)$/),surah=inPart?findSurahIn(inPart[1]):null;
-  let query=((t.match(/(?:كلمه|لفظ|لفظه) (.+)$/)||t.match(/(?:ابحث|دور|ابحثلي|دورلي)(?: عن| علي)? (.+)$/)||t.match(/(?:فين|كام مره|عدد مرات)(?: (?:اتذكرت|وردت|جت|ذكرت|اتكررت))? (.+)$/)||t.match(/^(.+?) (?:في|فى) (?:القران|المصحف)$/))?.[1]||'')
-   .replace(/ (?:في|فى) (?:سوره|القران|المصحف).*$/,'').replace(/ (?:اتذكرت|وردت|جت|ذكرت|اتكررت|موجوده|كام مره).*$/,'').replace(/^(?:جزء من |اي )?(?:كلمه|لفظ|لفظه) /,'').trim();
+ const inQuran=t.match(WORD_IN_QURAN);
+ if(inQuran||/(?:^| )(?:كلمه|لفظ|لفظه) .*(?:موجوده?(?: |$)|القران|المصحف)|(?:القران|المصحف) .*(?:كلمه|لفظ|لفظه) /.test(t)||/(ابحث|(?:^| )(?:دور|دورلي)(?: |$)|(?:^| )فين(?: |$)|كام مره|عدد مرات|وردت|اتذكرت|اتكررت|جت كلمه|^(?:كلمه|لفظ|لفظه) )/.test(t)){
+  const inPart=t.match(/ (?:(?:في|فى) |ب)(سوره .+)$/),surah=inPart?findSurahIn(inPart[1]):null;
+  let query=((t.match(/(?:كلمه|لفظ|لفظه) (.+)$/)||t.match(/(?:ابحث|دور|ابحثلي|دورلي)(?: عن| علي)? (.+)$/)||t.match(/(?:فين|كام مره|عدد مرات)(?: (?:اتذكرت|وردت|جت|ذكرت|اتكررت))? (.+)$/)||inQuran)?.[1]||'')
+   .replace(/ (?:(?:في|فى) (?:سوره|القران|المصحف)|بسوره|بالقران|بالمصحف).*$/,'').replace(/ (?:اتذكرت|وردت|جت|ذكرت|اتكررت|موجوده?|كام مره).*$/,'').replace(/^(?:جزء من |اي )?(?:كلمه|لفظ|لفظه) /,'').trim();
   if(/^(?:عن|علي|في|كلمه|لفظ|لفظه)$/.test(query))query='';
   if(!query)return 'قوللي الكلمة اللي عايز تدور عليها، مثلًا: «ابحث عن كلمة الصبر» أو «كام مرة اتذكرت الجنة».';
   const partial=/(جزء من|اي كلمه فيها|مشتقات|اشتقاقات)/.test(t),said=shown(query);
   const r=tools.search_quran({query,surah,partial,phrase:query.includes(' ')});chip(actionLabel.search_quran);
   const inSurah=surah?` في ${nameOf(surah)}`:'';
+  if(!r.ayat_count&&!partial&&!query.includes(' ')&&query.length>=3){
+   // Not in this exact form: show the Mushaf's words that contain it, and say plainly that they are other forms.
+   const near=tools.search_quran({query,surah,partial:true});
+   if(near.ayat_count){
+    lastResults=near.results;
+    const forms=[...new Set(near.results.flatMap(x=>norm(x.text).split(' ')).filter(w=>w.includes(query)))].slice(0,4);
+    return `«${said}» مش موجودة${inSurah} بالشكل ده، لكن فيه كلمات قريبة منها${forms.length?` (${forms.join('، ')})`:''} في ${ayat(near.ayat_count)}: ${refs(near.results.slice(0,5))}. قول «افتح النتيجة 1» وأفتحهالك.`;
+   }
+  }
   if(!r.ayat_count)return `«${said}» مش موجودة${inSurah} بالشكل ده. جرّب جزء من الكلمة («ابحث عن جزء من كلمة ${said}») أو من غير «ال».`;
   lastResults=r.results;
   const how=/(كام مره|عدد مرات|اتكررت)/.test(t)?`اتذكرت ${times(r.occurrences)} في ${ayat(r.ayat_count)}`:`جت في ${ayat(r.ayat_count)}`;
-  return `«${said}» ${how}${inSurah}. ${r.ayat_count>5?'أولهم':'وهي'}: ${refs(r.results.slice(0,5))}. قول «افتح النتيجة 1» وأفتحهالك.`;
+  const yes=/^هل |موجوده?(?: |$)/.test(t)?`أيوه، «${said}» موجودة${inSurah||' في القرآن'}: ${how}`:`«${said}» ${how}${inSurah}`;
+  return `${yes}. ${r.ayat_count>5?'أولهم':'وهي'}: ${refs(r.results.slice(0,5))}. قول «افتح النتيجة 1» وأفتحهالك.`;
  }
  return null;
 }
@@ -414,7 +453,7 @@ async function localTurn(text){
   else if(/(ماذا|كيف|شو|ايش|ايه|ازاي).*(تستطيع|تقدر|تساعد|يمكنك|تعمل|بتعمل)|مساعده|ساعدني/.test(t))said.push(CAN);
   else if(globalThis.LocalLLM?.ready()){await llmTurn(text,t);return;}
   else if(t.split(' ').length<=2&&tools.search_quran({query:t,phrase:t.includes(' ')}).ayat_count){said.push(await knowledgeTurn('ابحث عن '+t,text));}
-  else said.push('معلش، مفهمتش طلبك في الوضع المحلي. '+CAN+' ولو عايز تتكلم معايا براحتك فعّل Claude (بص في README).');
+  else said.push('معلش، مفهمتش طلبك في الوضع المحلي. '+CAN+' وللمحادثة الحرة استخدم زر التفعيل أعلى المحادثة.');
  }
  const reply=said.join(' ');bubble('assistant',reply);speak(reply);
 }
@@ -423,15 +462,25 @@ async function localTurn(text){
 // The Android app and the static copies of the site have no server of their own, so they use the one on Render.
 const REMOTE_ASSISTANT=!!globalThis.Capacitor?.isNativePlatform?.()||/(?:^|\.)(?:netlify\.app|github\.io)$/.test(globalThis.location?.hostname||'');
 const ASSISTANT_API=REMOTE_ASSISTANT?'https://telawa-exame.onrender.com/api/assistant':'api/assistant';
+// Claude answers only after the person turns it on, and only if the server has a key.
+let claudeOn=false;
+const claudeReady=()=>claudeOn&&!!status?.available&&!!status?.configured;
+const CLAUDE_NOTE='اختياري: تُرسل رسائلك وما يلزم للرد إلى Anthropic. قد يخطئ، فتأكد من المصدر.';
+function claudeUI(message){
+ const button=$('claudeToggle');if(!button)return;
+ const usable=!!status?.available&&!!status?.configured;
+ // The phone app shows it only when it can work, so nobody meets a button that does nothing.
+ $('claudeBar').hidden=!!globalThis.Capacitor?.isNativePlatform?.()&&!usable;
+ button.textContent=claudeReady()?'إيقاف Claude':'✨ تفعيل Claude';
+ $('claudeStatus').textContent=message??(claudeReady()?'✓ مفعّل: تُرسل رسائلك وما يلزم للرد إلى Anthropic حتى توقفه.':CLAUDE_NOTE);
+}
 async function checkStatus(){
  if(status&&!status.retry)return status;
  // A free server may be asleep: do not wait long, answer locally, and look again on the next question.
  try{const r=await fetch(ASSISTANT_API,{signal:AbortSignal.timeout(6000)});status=r.ok?await r.json():{available:false,retry:true};}catch{status={available:false,retry:true};}
- const claude=status.available&&status.configured;
+ const claude=claudeReady();
  $('aiMode').textContent=claude?'Claude · محادثة وصوت':globalThis.LocalLLM?.remote?.()?'الوضع المحلي + نموذج على الخادم':'الوضع المحلي · أوامر أساسية';
- // In the phone app the local mode is the assistant, so no hint about server keys.
- if(claude){let told=false;try{told=localStorage.getItem('tarteel:aiNotice')==='1';localStorage.setItem('tarteel:aiNotice','1');}catch{}if(!told)bubble('note','المساعد الذكي يعمل بخدمة Claude: تُرسل رسائلك وما يلزم للرد إلى Anthropic. قد يخطئ، فتأكد من المصدر.');}
- if(!REMOTE_ASSISTANT&&status.available&&!status.configured)bubble('note','المساعد شغّال بالوضع المحلي: بيفهم الأوامر الأساسية كتابة أو بالصوت. لو عايز محادثة حرة بالذكاء الاصطناعي ضيف مفتاح Claude API على الخادم (بص في README).');
+ claudeUI();
  return status;
 }
 // ---------- Free conversation with the local model (computers only, see llm.js) ----------
@@ -505,10 +554,10 @@ async function llmTurn(text,t){
   speak(reply);
  }catch(e){div.textContent=e.friendly?e.message:'تعذّر تشغيل النموذج المحلي: '+(e.message||e);}
 }
-// Phones: free chat through the app's server, off until the person turns it on, and it can be turned off again.
+// Free chat through the app's server (adel203047/tarteel-assistant), off until the person turns it on, and it can be turned off again.
 function setupRemoteLLM(L){
  const button=$('llmEnable'),note=$('llmStatus');
- const OFF='🌐 تفعيل المحادثة الحرة عبر الخادم',NOTE='اختياري ومجاني: يُرسل سؤالك ومصادره إلى خادم التطبيق على Hugging Face، ولا يحفظها التطبيق. الحد المجاني نحو 3 أسئلة يوميًا لكل زائر، وقد يتأخر أول رد.';
+ const OFF='🌐 تفعيل المحادثة الحرة عبر الخادم',NOTE='اختياري ومجاني: يُرسل سؤالك ومصادره إلى Hugging Face. نحو 3 أسئلة يوميًا، وقد يتأخر أول رد.';
  const off=()=>{L.disableRemote();save('llmRemote',false);button.textContent=OFF;note.textContent=NOTE;status=null;checkStatus();};
  const on=async()=>{
   button.disabled=true;note.textContent='جارٍ الاتصال بالخادم…';
@@ -523,8 +572,8 @@ function setupRemoteLLM(L){
 // The enable button: shown on computers with WebGPU only; once enabled, later visits load it from the browser's copy.
 function setupLLM(){
  const L=globalThis.LocalLLM;if(!L||!$('llmBar'))return;
- if(L.remoteSupported?.())return setupRemoteLLM(L);
- if(!L.supported())return;
+ // The on-device model is a lab option; everyone else gets the app's server model, off until they turn it on.
+ if(!L.supported())return L.remoteSupported?.()?setupRemoteLLM(L):undefined;
  $('llmBar').hidden=false;
  const start=async()=>{
   $('llmEnable').disabled=true;$('llmProg').hidden=false;$('llmStatus').textContent='جارٍ تجهيز النموذج…';
@@ -542,12 +591,25 @@ function setupLLM(){
  if(load('llm',false)===true)start();
 }
 setupLLM();
+function setupClaude(){
+ const button=$('claudeToggle');if(!button)return;
+ claudeOn=load('claude',false)===true;claudeUI();
+ button.onclick=async()=>{
+  if(claudeReady()){claudeOn=false;save('claude',false);status=null;await checkStatus();return;}
+  button.disabled=true;$('claudeStatus').textContent='جارٍ التحقق من الخدمة…';
+  status=null;await checkStatus();
+  if(status.available&&status.configured){claudeOn=true;save('claude',true);status=null;await checkStatus();}
+  else{claudeOn=false;save('claude',false);claudeUI(status.retry?'الخادم يستيقظ أو غير متاح الآن. انتظر دقيقة ثم حاول مرة أخرى.':'Claude غير متاح الآن لأن الخدمة لم تُجهَّز على الخادم بعد. ما زالت أوامر المساعد تعمل.');}
+  button.disabled=false;
+ };
+}
+setupClaude();
 async function useLocal(text){setBusy(true);try{await localTurn(text);}finally{setBusy(false);}}
 async function ask(text){
  text=text.trim();if(!text||busy)return;
  $('aiInput').value='';$('aiSuggest').hidden=true;bubble('user',text);
- const st=await checkStatus();
- if(!(st.available&&st.configured))return useLocal(text);
+ await checkStatus();
+ if(!claudeReady())return useLocal(text);
  history.push({role:'user',content:text});
  setBusy(true);
  try{
@@ -559,7 +621,7 @@ async function ask(text){
     // Drop the unanswered question so the next try does not send it twice.
     if(step===0)history.pop();
     // Claude is unavailable (no key, no SDK, server unreachable): answer this one locally and stay local.
-    if(step===0&&(!r||['not_configured','no_sdk','network','daily_limit'].includes(data.error))){status={available:false};$('aiMode').textContent='الوضع المحلي · أوامر أساسية';bubble('note',data.message||'تعذّر الوصول إلى Claude، أجيب بالوضع المحلي.');setBusy(false);return useLocal(text);}
+    if(step===0&&(!r||['not_configured','no_sdk','network','daily_limit'].includes(data.error))){status={available:false};$('aiMode').textContent='الوضع المحلي · أوامر أساسية';claudeUI();bubble('note',data.message||'تعذّر الوصول إلى Claude، أجيب بالوضع المحلي.');setBusy(false);return useLocal(text);}
     bubble('note',data.message||'حدث خطأ في المساعد.');
     return;
    }

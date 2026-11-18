@@ -409,6 +409,38 @@ function assistantHarness(h,voices){
  vm.runInNewContext(fs.readFileSync(require.resolve('./assistant.js'),'utf8'),h.ctx);h.ctx.fetch=async()=>({ok:false,json:async()=>({})});
  return spoken;
 }
+test('assistant answers whether a word is in the Quran, and never sends visitors to a README',async()=>{
+ const real={'data/quran.json':require('./data/quran.json'),'data/simple.json':require('./data/simple.json')};
+ const h=await appHarness({fetch:async u=>({ok:true,json:async()=>real[u]})});h.ctx.QuranKnowledge=require('./knowledge.js');
+ const spoken=assistantHarness(h,[]),say=async q=>{await h.ctx.TarteelAssistant.ask(q);return spoken.at(-1).text;};
+ assert.match(await say('هل كلمة سفيه موجودة بالقران'),/^أيوه، «سفيه» موجودة في القرآن: جت في آية واحدة\. وهي: 1\) سورة البقرة 282/);
+ assert.match(await say('هل الصبر موجود في القرآن'),/^أيوه، «الصبر» موجودة في القرآن/);
+ assert.match(await say('كلمة الكوثر بالمصحف'),/«الكوثر» جت في آية واحدة/);
+ assert.match(await say('هل كلمة سفيهون موجودة بالقران'),/مش موجودة بالشكل ده\. جرّب/);
+ assert.match(await say('هل كلمة سفي موجودة بالقران'),/مش موجودة بالشكل ده، لكن فيه كلمات قريبة منها \(.*سفيه/);
+ assert.doesNotMatch(await say('زززز ططططط قققق'),/README/);
+ assert.match(await say('هل كلمة الرحمة موجودة في سورة الكهف'),/^أيوه، «الرحمة» موجودة في سورة الكهف: جت في 5 آيات\. وهي: 1\) سورة الكهف 10/);
+ assert.match(await say('سورة الكهف فيها كلمة الرحمة'),/^أيوه، «الرحمة» موجودة في سورة الكهف/);
+ assert.match(await say('كلمة الرحمة بسورة الكهف'),/^أيوه، «الرحمة» موجودة في سورة الكهف/);
+ assert.match(await say('ابحث عن الرحمة بسورة الكهف'),/^«الرحمة» جت في 5 آيات في سورة الكهف/);
+ assert.match(await say('هل كلمة الكوثر موجودة في سورة البقرة'),/«الكوثر» مش موجودة في سورة البقرة/);
+ assert.match(await say('في أي سورة وردت كلمة الكوثر'),/^«الكوثر» موجودة في سورة واحدة وآية واحدة: سورة الكوثر \(آية واحدة\)/);
+ assert.match(await say('افتح النتيجة 1'),/^فتحتلك سورة الكوثر، الآية 1\.$/);
+ assert.match(await say('ابحث عن كلمة الصبر في كل السور'),/^«الصبر» موجودة في \d+ سورة? ?.*سورة البقرة \(/);
+ assert.match(await say('انهي سورة فيها قل اعوذ برب الفلق'),/^دي سورة الفلق، الآية 1/);
+ assert.match(await say('سورة الكهف فيها كام آية'),/110/);
+});
+test('Claude runs only after its button is pressed, and only when the server is ready',async()=>{
+ const h=await appHarness(),spoken=assistantHarness(h,[]);let configured=false,posts=0;
+ h.ctx.fetch=async(u,o)=>{if(o?.method==='POST'){posts++;return {ok:true,json:async()=>({content:[{type:'text',text:'رد Claude'}],stop_reason:'end_turn'})};}return {ok:true,json:async()=>({available:true,configured})};};
+ const press=()=>h.el('claudeToggle').onclick();
+ await press();assert.match(h.el('claudeStatus').textContent,/غير متاح/);assert.match(h.el('claudeToggle').textContent,/تفعيل Claude/);
+ configured=true;await h.ctx.TarteelAssistant.ask('السلام عليكم');assert.equal(posts,0);assert.match(spoken.at(-1).text,/أهلًا بيك/);
+ await press();assert.match(h.el('claudeToggle').textContent,/إيقاف Claude/);
+ await h.ctx.TarteelAssistant.ask('السلام عليكم');assert.equal(posts,1);assert.equal(spoken.at(-1).text,'رد Claude');
+ await press();assert.match(h.el('claudeToggle').textContent,/تفعيل Claude/);
+ await h.ctx.TarteelAssistant.ask('السلام عليكم');assert.equal(posts,1);
+});
 test('assistant speaks with an Egyptian male voice when available, else lowers a female voice',async()=>{
  const shakir={name:'Microsoft شاكر Online (Natural) - Arabic (Egypt)',lang:'ar-EG'},hoda={name:'Microsoft Hoda - Arabic (Egypt)',lang:'ar-EG'};
  const h1=await appHarness(),s1=assistantHarness(h1,[hoda,{name:'Microsoft حامد Online (Natural) - Arabic (Saudi Arabia)',lang:'ar-SA'},shakir,{name:'Microsoft سلمى Online (Natural) - Arabic (Egypt)',lang:'ar-EG'}]);

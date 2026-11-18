@@ -1,7 +1,7 @@
 // Free conversation on computers: a small language model (Qwen2.5-1.5B, Apache-2.0, via WebLLM) runs on the computer's own GPU.
 // Never on phones or in the phone app: it needs WebGPU and a ~0.85 GB one-time download (kept by the browser after).
-// Phones can instead ask the same fine-tuned model on the app's server (Space/), but only after the person turns it on,
-// because the question then leaves the device. Nothing is downloaded to the phone.
+// Phones and computers can instead ask the same fine-tuned model on the app's server (Space/), but only after the person turns it on,
+// because the question then leaves the device. Nothing is downloaded to the device.
 // The model only words the answer; facts come from the app's own sources, passed in by assistant.js.
 (scope=>{
 const WEBLLM='https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.87/+esm';
@@ -23,7 +23,7 @@ const LocalLLM={
  // a computer with WebGPU by setting localStorage «tarteel:llmLab» to true; phones never see it.
  supported:()=>{let lab=false;try{lab=scope.localStorage?.getItem('tarteel:llmLab')==='true';}catch{}return lab&&!native&&!phone&&!!scope.navigator?.gpu;},
  ready:()=>!!engine||remoteOn,
- remoteSupported:()=>!!remoteUrl()&&(native||phone),
+ remoteSupported:()=>!!remoteUrl(),
  remote:()=>remoteOn,
  disableRemote(){remoteOn=false;},
  // A sleeping free server needs a while to wake, so a failed check is reported as «try again», not as an error.
