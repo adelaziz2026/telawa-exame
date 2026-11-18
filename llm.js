@@ -14,7 +14,8 @@ const tunedUrl=()=>{try{return scope.localStorage?.getItem('tarteel:llmModelUrl'
 const REMOTE_URL='https://adel203047-tarteel-assistant.hf.space';
 const remoteUrl=()=>{let u=REMOTE_URL;try{u=scope.localStorage?.getItem('tarteel:llmRemoteUrl')||REMOTE_URL;}catch{}return u.replace(/\/+$/,'');};
 const friendly=m=>Object.assign(Error(m),{friendly:true});
-let remoteOn=false;
+let remoteOn=false,quotaUntil=0;
+const remoteOpen=()=>remoteOn&&Date.now()>=quotaUntil;
 const native=!!scope.Capacitor?.isNativePlatform?.();
 const phone=/Android|iPhone|iPad|iPod|Mobile/i.test(scope.navigator?.userAgent||'')||!!scope.matchMedia?.('(pointer: coarse)').matches;
 let engine=null,loading=null;
@@ -22,10 +23,11 @@ const LocalLLM={
  // Off for everyone: in tests a small model was too slow and sometimes invented answers (see Document/). It can be tried on
  // a computer with WebGPU by setting localStorage «tarteel:llmLab» to true; phones never see it.
  supported:()=>{let lab=false;try{lab=scope.localStorage?.getItem('tarteel:llmLab')==='true';}catch{}return lab&&!native&&!phone&&!!scope.navigator?.gpu;},
- ready:()=>!!engine||remoteOn,
+ ready:()=>!!engine||remoteOpen(),
  remoteSupported:()=>!!remoteUrl(),
- remote:()=>remoteOn,
- disableRemote(){remoteOn=false;},
+ remote:remoteOpen,
+ remoteEnabled:()=>remoteOn,
+ disableRemote(){remoteOn=false;quotaUntil=0;},
  // A sleeping free server needs a while to wake, so a failed check is reported as «try again», not as an error.
  async enableRemote(){
   let ok=false;try{ok=(await scope.fetch(remoteUrl()+'/gradio_api/info',{cache:'no-store',signal:AbortSignal.timeout(25000)})).ok;}catch{}
@@ -51,7 +53,11 @@ const LocalLLM={
     const events=buffer.split('\n\n');buffer=events.pop();
     for(const block of events){
      const kind=block.match(/^event: (.+)$/m)?.[1],line=block.match(/^data: (.*)$/m)?.[1];
-     if(kind==='error')throw friendly(/quota|runs limit/i.test(line||'')?'انتهت أسئلتك المجانية اليوم في الخدمة الذكية (نحو 3 أسئلة). ما زالت أوامر التطبيق تعمل، وحاول غدًا.':busy);
+     if(kind==='error'){
+      // Out of free runs: rest the server for an hour, so the app's own search and commands answer meanwhile.
+      if(/quota|runs limit/i.test(line||'')){quotaUntil=Date.now()+3600000;throw Object.assign(friendly('انتهت الأسئلة المجانية في الخدمة الذكية الآن (نحو 3 أسئلة يوميًا). ما زال البحث في القرآن وأوامر التطبيق يعملان.'),{quota:true});}
+      throw friendly(busy);
+     }
      if((kind!=='generating'&&kind!=='complete')||!line)continue;
      const now=JSON.parse(line)?.[0];if(typeof now!=='string')continue;
      text=now;if(LocalLLM.broken(text)){stop.abort();return '';}

@@ -409,7 +409,7 @@ async function localTurn(text){
  try{const answer=await knowledgeTurn(t,text);if(answer){bubble('assistant',answer);speak(answer);return;}}
  catch(e){const m=String(e.message||e);bubble('note',/does not exist|has \d+ ayat|still loading/.test(m)?'الرقم ده مش موجود في المصحف، أو المصحف لسه بيحمّل. اتأكد من رقم السورة والآية.':'تعذّر الوصول للمصدر: '+m+'. تحقق من الإنترنت.');return;}
  // With the local model on, a real question («ما الفرق بين…؟») goes to it instead of being read as a command.
- if(globalThis.LocalLLM?.ready()&&(/[؟?]\s*$/.test(text)||/^(?:ما|ماذا|لماذا|ليه|كيف|ازاي|هل|مين|من هو|من هي|متي|اين|اشرح|وضح|عرفني|احكيلي|ايه الفرق|ما الفرق|ايه فضل|ما فضل)(?: |$)/.test(t))&&!/^(?:افتح|شغل|اقرا|سمع|روح|وديني|خبي|اخفي|اظهر|ابحث|دور)/.test(t)){await llmTurn(text,t);return;}
+ if(globalThis.LocalLLM?.ready()&&(/[؟?]\s*$/.test(text)||/^(?:ما|ماذا|لماذا|ليه|كيف|ازاي|هل|مين|من هو|من هي|متي|اين|اشرح|وضح|عرفني|احكيلي|ايه الفرق|ما الفرق|ايه فضل|ما فضل)(?: |$)/.test(t))&&!/^(?:افتح|شغل|اقرا|سمع|روح|وديني|خبي|اخفي|اظهر|ابحث|دور)/.test(t)&&!quranWordOnly(t)){await llmTurn(text,t);return;}
  const said=[];let did=false;
  try{
   // 1. Where to go: «آية الكرسي», a surah by name or number, an ayah number, or a range.
@@ -451,6 +451,7 @@ async function localTurn(text){
  if(!did){
   if(/^(السلام|سلام|مرحبا|اهلا|هلا|صباح|مساء|ازيك|ازاي)/.test(t)&&!/(تعمل|تقدر|تساعد)/.test(t))said.push('وعليكم السلام ورحمة الله وبركاته! أهلًا بيك. '+CAN);
   else if(/(ماذا|كيف|شو|ايش|ايه|ازاي).*(تستطيع|تقدر|تساعد|يمكنك|تعمل|بتعمل)|مساعده|ساعدني/.test(t))said.push(CAN);
+  else if(globalThis.LocalLLM?.ready()&&quranWordOnly(t))said.push(await knowledgeTurn('ابحث عن '+t,text));
   else if(globalThis.LocalLLM?.ready()){await llmTurn(text,t);return;}
   else if(t.split(' ').length<=2&&tools.search_quran({query:t,phrase:t.includes(' ')}).ayat_count){said.push(await knowledgeTurn('ابحث عن '+t,text));}
   else said.push('معلش، مفهمتش طلبك في الوضع المحلي. '+CAN+' وللمحادثة الحرة استخدم زر التفعيل أعلى المحادثة.');
@@ -487,6 +488,8 @@ async function checkStatus(){
 // Words that say nothing about the subject, so they are not searched in the Mushaf.
 const LLM_STOP=new Set('الفرق فرق بين وبين سبب اسباب فضل اذكر اعطني اديني عايزه سميت تسميه سؤال ايه ازاي ليه امتي مين هل ما ماذا كيف لماذا متي اين فين عن في من علي الي اللي ده دي دول هو هي هم انا انت احنا القران سوره الايه ايه يعني قول قولي عايز عاوز ممكن اشرح تشرح اعرف معني الله كان كانت التي الذي هذا هذه ذلك لكن او ثم قال كلمه لفظ لفظه بهذا الاسم اسم قوله تعالي عدد كم وردت ورد ذكرت تعريف عرف حكم احكام الحروف حروف اي ايش موجوده موجود فيها فيه مكتوب جاءت جاء تكررت تكرر مره مرات الكريم المصحف ايات الايات اسمها لها له'.split(' '));
 const ayatWord=n=>n>=3&&n<=10?'آيات':'آية';
+// One or two Mushaf words on their own («سفينة»): the app can answer exactly, so this never needs the model.
+const quranWordOnly=t=>{const w=t.split(' ');return w.length<=2&&w.every(x=>x.length>=3&&!LLM_STOP.has(x))&&!findSurahIn(t)&&tools.search_quran({query:t,phrase:w.length>1}).ayat_count>0;};
 // The sources for one question: the open ayah, named surahs' facts, hadith terms, tajweed rules, Quran sciences facts,
 // and — for questions about the Mushaf's words — matching ayat and where a word occurs.
 function llmSources(text,t){
@@ -552,7 +555,10 @@ async function llmTurn(text,t){
   div.append(Object.assign(document.createElement('small'),{className:'ai-llm-tag',textContent:(onServer?'🌐 نموذج على خادم التطبيق':'🧠 نموذج محلي على جهازك')+' — قد يخطئ، فتأكد من المصدر'}));
   llmHistory.push({role:'user',content:text},{role:'assistant',content:reply});
   speak(reply);
- }catch(e){div.textContent=e.friendly?e.message:'تعذّر تشغيل النموذج المحلي: '+(e.message||e);}
+ }catch(e){
+  div.textContent=e.friendly?e.message:'تعذّر تشغيل النموذج المحلي: '+(e.message||e);
+  if(e.quota){$('llmStatus').textContent='الحد المجاني انتهى الآن. يعمل البحث والأوامر، وستُجرَّب الخدمة لاحقًا.';$('aiMode').textContent='الوضع المحلي · أوامر أساسية';}
+ }
 }
 // Free chat through the app's server (adel203047/tarteel-assistant), off until the person turns it on, and it can be turned off again.
 function setupRemoteLLM(L){
@@ -566,7 +572,7 @@ function setupRemoteLLM(L){
   button.disabled=false;
  };
  $('llmBar').hidden=false;button.textContent=OFF;note.textContent=NOTE;
- button.onclick=()=>L.remote()?off():on();
+ button.onclick=()=>L.remoteEnabled()?off():on();
  if(load('llmRemote',false)===true)on();
 }
 // The enable button: shown on computers with WebGPU only; once enabled, later visits load it from the browser's copy.

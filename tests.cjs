@@ -430,6 +430,16 @@ test('assistant answers whether a word is in the Quran, and never sends visitors
  assert.match(await say('انهي سورة فيها قل اعوذ برب الفلق'),/^دي سورة الفلق، الآية 1/);
  assert.match(await say('سورة الكهف فيها كام آية'),/110/);
 });
+test('a Quran word never spends a server question, and the free limit hands over to local answers',async()=>{
+ const real={'data/quran.json':require('./data/quran.json'),'data/simple.json':require('./data/simple.json')};
+ const h=await appHarness({fetch:async u=>({ok:true,json:async()=>real[u]})});h.ctx.QuranKnowledge=require('./knowledge.js');
+ let open=true,calls=0;h.ctx.LocalLLM={supported:()=>false,remoteSupported:()=>false,ready:()=>open,remote:()=>open,broken:()=>false,askRemote:async()=>{calls++;open=false;throw Object.assign(Error('انتهت الأسئلة المجانية'),{friendly:true,quota:true});}};
+ const spoken=assistantHarness(h,[]),last=()=>[...h.el('aiLog').children||[]].at(-1)?.textContent;
+ for(const q of ['سفينة','سفينة؟']){await h.ctx.TarteelAssistant.ask(q);assert.match(spoken.at(-1).text,/^«سفينة» جت في \d+ آية|^«سفينة» جت في آيتين|^«سفينة» جت في \d+ آيات/);}
+ assert.equal(calls,0);
+ await h.ctx.TarteelAssistant.ask('ما الحكمة من الصبر؟');assert.equal(calls,1);assert.match(h.el('llmStatus').textContent,/الحد المجاني انتهى/);assert.equal(open,false);
+ await h.ctx.TarteelAssistant.ask('ما الحكمة من الصبر؟');assert.equal(calls,1);assert.ok(last!==undefined);
+});
 test('Claude runs only after its button is pressed, and only when the server is ready',async()=>{
  const h=await appHarness(),spoken=assistantHarness(h,[]);let configured=false,posts=0;
  h.ctx.fetch=async(u,o)=>{if(o?.method==='POST'){posts++;return {ok:true,json:async()=>({content:[{type:'text',text:'رد Claude'}],stop_reason:'end_turn'})};}return {ok:true,json:async()=>({available:true,configured})};};
@@ -770,9 +780,11 @@ test('phone free chat: off by default, sends only question and sources, streams,
  const seen=[];assert.equal(await L.askRemote({question:'س',sources:'م',history:[]},t=>seen.push(t)),'سورة مكية');assert.deepEqual(seen,['سورة ','سورة مكية','سورة مكية']);
  assert.deepEqual(JSON.parse(sent.at(-2).o.body),{data:['س','م','[]']});assert.equal(sent.at(-1).u,'https://server.example/gradio_api/call/ask/e1');
  reply=()=>sse(['generating',['hello']]);assert.equal(await L.askRemote({question:'س'}),'');
- reply=()=>sse(['error',null]);await assert.rejects(L.askRemote({question:'س'}),e=>e.friendly);
+ reply=()=>sse(['error',null]);await assert.rejects(L.askRemote({question:'س'}),e=>e.friendly&&!e.quota);assert.equal(L.ready(),true);
+ reply=()=>sse(['error','You have exceeded your free GPU quota']);await assert.rejects(L.askRemote({question:'س'}),e=>e.quota);assert.equal(L.ready(),false);assert.equal(L.remote(),false);assert.equal(L.remoteEnabled(),true);
+ L.disableRemote();await L.enableRemote();assert.equal(L.ready(),true);
  await assert.rejects(L.askRemote({question:'س'.repeat(501)}),e=>e.friendly);
- reply=()=>sse(['error',{error:'You have exceeded your ZeroGPU runs limit.'}]);await assert.rejects(L.askRemote({question:'س'}),e=>e.friendly&&/المجانية اليوم/.test(e.message));
+ reply=()=>sse(['error',{error:'You have exceeded your ZeroGPU runs limit.'}]);await assert.rejects(L.askRemote({question:'س'}),e=>e.quota&&/الأسئلة المجانية/.test(e.message));
  assert.equal(load(async()=>new Response(''),'').remoteSupported(),true);
  if(fs.existsSync('./Space/rules.txt')){const a=await require('./Training/app-sources.cjs').loadApp();assert.equal(fs.readFileSync('./Space/rules.txt','utf8').trim(),a.rules().trim());}
 });
