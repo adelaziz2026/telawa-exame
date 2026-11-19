@@ -14,11 +14,8 @@ for (const file of files) fs.copyFileSync(path.join(root, file), path.join(out, 
 for (const folder of folders) fs.cpSync(path.join(root, folder), path.join(out, folder), {recursive: true});
 // GitHub Pages: serve files as they are (no Jekyll processing).
 fs.writeFileSync(path.join(out, '.nojekyll'), '');
-// Public description of the app for «Sign in with Hugging Face». It holds no secret. Netlify hosts the copy Hugging Face reads.
-const pages = ['https://telawa-exame.netlify.app/', 'https://adelaziz2026.github.io/telawa-exame/', 'https://telawa-exame.onrender.com/', 'http://localhost/', 'http://127.0.0.1/'];
-fs.mkdirSync(path.join(out, '.well-known'));
-fs.writeFileSync(path.join(out, '.well-known', 'oauth-cimd'), JSON.stringify({client_id: 'https://telawa-exame.netlify.app/.well-known/oauth-cimd', client_name: 'Ikhtibar Al-Tilawa', client_uri: pages[0], redirect_uris: pages, token_endpoint_auth_method: 'none'}, null, 2));
-fs.writeFileSync(path.join(out, '_headers'), '/.well-known/oauth-cimd\n  Content-Type: application/json\n  Access-Control-Allow-Origin: *\n');
+// Public description of the app for «Sign in with Hugging Face» (no secret). GitHub Pages serves the copy Hugging Face reads.
+fs.copyFileSync(path.join(root, 'oauth-client.json'), path.join(out, 'oauth-client.json'));
 // The service worker caches every file it lists; a missing one would break offline install.
 const lists = [...fs.readFileSync(path.join(root, 'sw.js'), 'utf8').matchAll(/const (?:SHELL|DATA) = \[([^\]]*)\]/g)].map(m => m[1]).join(',');
 const listed = [...lists.matchAll(/'([^']+)'/g)].map(m => m[1]).filter(f => f !== './');

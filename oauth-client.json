@@ -1,0 +1,12 @@
+{
+  "client_id": "https://adelaziz2026.github.io/telawa-exame/oauth-client.json",
+  "client_name": "Ikhtibar Al-Tilawa",
+  "client_uri": "https://adelaziz2026.github.io/telawa-exame/",
+  "redirect_uris": [
+    "https://adelaziz2026.github.io/telawa-exame/",
+    "https://telawa-exame.onrender.com/",
+    "http://localhost/",
+    "http://127.0.0.1/"
+  ],
+  "token_endpoint_auth_method": "none"
+}

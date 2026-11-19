@@ -16,7 +16,7 @@ const remoteUrl=()=>{let u=REMOTE_URL;try{u=scope.localStorage?.getItem('tarteel
 const friendly=m=>Object.assign(Error(m),{friendly:true});
 // Optional «Sign in with Hugging Face» (OAuth with PKCE, no secret): the person signs in on huggingface.co, so the app never
 // sees the password. The short-lived token asks only for the public profile and goes only to Hugging Face.
-const HF='https://huggingface.co',HF_CLIENT='https://telawa-exame.netlify.app/.well-known/oauth-cimd',AUTH_KEY='tarteel:hfAuth',FLOW_KEY='tarteel:hfFlow';
+const HF='https://huggingface.co',HF_CLIENT='https://adelaziz2026.github.io/telawa-exame/oauth-client.json',AUTH_KEY='tarteel:hfAuth',FLOW_KEY='tarteel:hfFlow';
 const readJson=(area,key)=>{try{return JSON.parse(scope[area]?.getItem(key)||'null');}catch{return null;}};
 const writeJson=(area,key,value)=>{try{if(value)scope[area].setItem(key,JSON.stringify(value));else scope[area].removeItem(key);}catch{}};
 const b64url=bytes=>scope.btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');

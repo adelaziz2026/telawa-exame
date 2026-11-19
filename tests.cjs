@@ -477,6 +477,12 @@ test('when GPU runs end the same question is answered by the slower CPU route',a
  await L.enableRemote();const seen=[];assert.equal(await L.askRemote({question:'س'},t=>seen.push(t)),'جواب بطيء');assert.equal(L.lastMode,'cpu');assert.match(seen[0],/وضع أبطأ/);assert.equal(L.ready(),true);
  urls.length=0;assert.equal(await L.askRemote({question:'س'}),'جواب بطيء');assert.equal(urls.some(u=>u.endsWith('/call/ask')),false);
 });
+test('the sign-in description is served by GitHub Pages and lists every page that signs in',()=>{
+ const app=JSON.parse(fs.readFileSync('./oauth-client.json','utf8'));
+ assert.match(fs.readFileSync('./llm.js','utf8'),new RegExp("HF_CLIENT='"+app.client_id.replace(/[.]/g,'\\.')+"'"));
+ assert.equal(app.client_id,'https://adelaziz2026.github.io/telawa-exame/oauth-client.json');assert.equal(app.token_endpoint_auth_method,'none');
+ for(const page of ['https://adelaziz2026.github.io/telawa-exame/','https://telawa-exame.onrender.com/','http://localhost/'])assert.ok(app.redirect_uris.includes(page));
+});
 test('the phone app signs in with a device code approved in the browser',async()=>{
  const m=new Map,localStorage={getItem:k=>m.get(k)??null,setItem:(k,v)=>m.set(k,String(v)),removeItem:k=>m.delete(k)};let polls=0,native,shown;
  const ctx={navigator:{userAgent:'Android'},Capacitor:{isNativePlatform:()=>true,nativePromise:async(p,a,o)=>{native={p,a,o};return {status:200,data:{device_code:'d1',user_code:'ABCD-1234',verification_uri:'https://hf.co/oauth/device',expires_in:60,interval:0}};}},localStorage,setTimeout:f=>setTimeout(f,0),clearTimeout,AbortController,AbortSignal,TextDecoder,TextEncoder,URLSearchParams,encodeURIComponent,JSON,fetch:async u=>{if(String(u).endsWith('/oauth/userinfo'))return new Response(JSON.stringify({preferred_username:'reader'}));polls++;return polls<2?new Response(JSON.stringify({error:'authorization_pending'}),{status:400}):new Response(JSON.stringify({access_token:'hf_oauth_device',expires_in:3600}));}};ctx.globalThis=ctx;
