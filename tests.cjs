@@ -484,6 +484,13 @@ test('the phone app signs in with a device code approved in the browser',async()
  assert.equal(L.signInSupported(),true);assert.equal(L.usesDeviceSignIn(),true);
  assert.equal(await L.deviceSignIn(x=>{shown=x;}),'reader');assert.equal(shown.code,'ABCD-1234');assert.equal(shown.url,'https://hf.co/oauth/device');assert.equal(native.p,'CapacitorHttp');assert.match(native.o.data,/scope=openid\+profile/);assert.equal(polls,2);assert.equal(L.hfUser(),'reader');
 });
+test('ChatGPT, Claude and Gemini get the question with a few app facts',async()=>{
+ const real={'data/quran.json':require('./data/quran.json'),'data/simple.json':require('./data/simple.json')};
+ const h=await appHarness({fetch:async u=>({ok:true,json:async()=>real[u]})});h.ctx.QuranKnowledge=require('./knowledge.js');assistantHarness(h,[]);
+ const E=h.ctx.TarteelAssistant.elsewhere,prompt=E.prompt('كم عدد آيات سورة الكهف؟');
+ assert.match(prompt,/السؤال: كم عدد آيات سورة الكهف؟/);assert.match(prompt,/عدد آياتها 110/);assert.ok(prompt.length<1200);
+ assert.ok(E.url('chatgpt',prompt).startsWith('https://chatgpt.com/?q='));assert.ok(E.url('claude',prompt).startsWith('https://claude.ai/new?q='));assert.equal(E.url('gemini',prompt),'https://gemini.google.com/app');
+});
 test('Claude runs only after its button is pressed, and only when the server is ready',async()=>{
  const h=await appHarness(),spoken=assistantHarness(h,[]);let configured=false,posts=0;
  h.ctx.fetch=async(u,o)=>{if(o?.method==='POST'){posts++;return {ok:true,json:async()=>({content:[{type:'text',text:'رد Claude'}],stop_reason:'end_turn'})};}return {ok:true,json:async()=>({available:true,configured})};};

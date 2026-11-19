@@ -649,6 +649,7 @@ setupClaude();
 async function useLocal(text){setBusy(true);try{await localTurn(text);}finally{setBusy(false);}}
 async function ask(text){
  text=text.trim();if(!text||busy)return;
+ lastAsked=text;
  $('aiInput').value='';$('aiSuggest').hidden=true;bubble('user',text);
  await checkStatus();
  if(!claudeReady())return useLocal(text);
@@ -697,5 +698,23 @@ $('aiForm').onsubmit=e=>{e.preventDefault();ask($('aiInput').value);};
 $('aiInput').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();ask($('aiInput').value);}};
 $('aiPanel').onkeydown=e=>{if(e.key==='Escape')open(false);};
 for(const b of $('aiSuggest').querySelectorAll('button'))b.onclick=()=>ask(b.textContent);
-globalThis.TarteelAssistant={tools,ask,get history(){return history;},llm:{sources:text=>llmSources(text,norm(text)),rules:LLM_RULES,nameOf,norm}};
+// Free asking elsewhere: opens ChatGPT, Claude or Gemini with the question, in the person's own account there.
+// Nothing is sent until they press a button; the app adds a few of its own facts so the answer can be checked.
+let lastAsked='';
+const ELSEWHERE={chatgpt:{name:'ChatGPT',url:q=>'https://chatgpt.com/?q='+encodeURIComponent(q)},claude:{name:'Claude',url:q=>'https://claude.ai/new?q='+encodeURIComponent(q)},gemini:{name:'Gemini',url:()=>'https://gemini.google.com/app'}};
+function elsewherePrompt(question){
+ const facts=llmSources(question,norm(question)).slice(0,600);
+ return 'أجب بالعربية وباختصار عن هذا السؤال المتعلق بالقرآن الكريم وعلومه. اعتمد على مصادر موثوقة واذكرها، ونبّه إن كانت المسألة خلافية، ولا تنسب حديثًا للنبي ﷺ دون ذكر درجته.\n\nالسؤال: '+question+(facts?'\n\nمعلومات من تطبيق «اختبار التلاوة» قد تفيد:\n'+facts:'');
+}
+function askElsewhere(service){
+ const question=($('aiInput').value||'').trim()||lastAsked,place=ELSEWHERE[service];
+ if(!place)return;
+ if(!question){bubble('note','اكتب سؤالك أولًا، ثم اختر الخدمة.');return;}
+ const prompt=elsewherePrompt(question),url=place.url(prompt);
+ try{navigator.clipboard?.writeText(prompt)?.catch?.(()=>{});}catch{}
+ if(globalThis.Capacitor?.isNativePlatform?.())location.assign(url);else window.open(url,'_blank','noopener');
+ bubble('note',`فتحت ${place.name} بحسابك هناك${service==='gemini'?'، ونسخت السؤال لك: الصقه في خانة الكتابة':'. إن لم يظهر السؤال فالصقه، فقد نسخته لك'}. ما تكتبه هناك يخضع لسياسة ${place.name}.`);
+}
+for(const b of document.querySelectorAll('#aiElsewhere [data-ai]'))b.onclick=()=>askElsewhere(b.dataset.ai);
+globalThis.TarteelAssistant={tools,ask,elsewhere:{prompt:elsewherePrompt,url:(service,q)=>ELSEWHERE[service].url(q)},get history(){return history;},llm:{sources:text=>llmSources(text,norm(text)),rules:LLM_RULES,nameOf,norm}};
 })();
