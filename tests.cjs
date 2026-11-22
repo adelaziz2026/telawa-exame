@@ -236,6 +236,26 @@ test('surah recordings: home Wi-Fi sign-in needs the pairing code shown on the c
   assert.equal((await tryLogin({password:'no',code:ready.code})).status,429);
  }finally{child.kill();fs.rmSync(dir,{recursive:true,force:true});}
 });
+test('memorising: each ayah repeats, the passage repeats, and a pause can follow each ayah',async()=>{
+ const real={'data/quran.json':require('./data/quran.json'),'data/simple.json':require('./data/simple.json')};
+ const h=await appHarness({fetch:async u=>({ok:true,json:async()=>real[u]})});
+ const q=h.ctx.buildQueue(2,[1,2],2,3);
+ assert.equal(q.length,12);assert.equal(JSON.stringify(q.slice(0,4).map(x=>x.ayah)),'[1,1,1,2]');assert.equal(JSON.stringify([q[6].round,q[6].ayah,q[6].turn]),'[2,1,1]');
+ assert.equal(h.ctx.gapSeconds('0',4),0);assert.equal(h.ctx.gapSeconds('5',4),5);assert.equal(h.ctx.gapSeconds('same',4.2),4.2);assert.equal(h.ctx.gapSeconds('same',500),60);
+});
+test('navigation: a Mushaf page or juz opens its ayat, and the assistant understands it',async()=>{
+ const real={'data/quran.json':require('./data/quran.json'),'data/simple.json':require('./data/simple.json')};
+ const h=await appHarness({fetch:async u=>({ok:true,json:async()=>real[u]})});h.ctx.QuranKnowledge=require('./knowledge.js');
+ assert.match(h.ctx.openPage(1),/الصفحة 1: .*من الآية 1 إلى 7\.$/);assert.equal(h.el('surah').value,1);assert.equal(String(h.el('ayahEnd').value),'7');
+ const last=h.ctx.openPage(604);assert.match(last,/الصفحة 604: .*من الآية 1 إلى 4\. وتكمل الصفحة في /);assert.equal(h.el('surah').value,112);
+ assert.match(h.ctx.openJuz(30),/^فتحتلك أول الجزء 30، الصفحة 582: /);assert.equal(h.el('surah').value,78);
+ assert.equal(h.ctx.openPage(0),'');assert.equal(h.ctx.openPage(605),'');assert.equal(h.ctx.openJuz(31),'');
+ const spoken=assistantHarness(h,[]),say=async x=>{await h.ctx.TarteelAssistant.ask(x);return spoken.at(-1).text;};
+ assert.match(await say('افتح صفحة 50'),/^فتحتلك الصفحة 50: /);
+ assert.match(await say('افتح جزء عم'),/^فتحتلك أول الجزء 30/);
+ assert.match(await say('الجزء 2'),/^فتحتلك أول الجزء 2، الصفحة 22: /);
+ assert.match(await say('صفحة 900'),/604 صفحة/);
+});
 test('server compresses the Quran data and revalidates it with ETags',()=>withServer(async request=>{
  const gz=await request('/data/simple.json',{headers:{'accept-encoding':'gzip'}});
  assert.equal(gz.status,200);assert.equal(gz.headers['content-encoding'],'gzip');assert.match(gz.headers['cache-control'],/max-age/);

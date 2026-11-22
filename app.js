@@ -108,14 +108,38 @@ function showVerse(){
  else{$('verse').textContent=many?nums.map(n=>s.ayahs[n-1].text+marker(n)).join(' '):selected().text;$('hint').hidden=true;}
  $('basmala').textContent=s.basmala;$('basmala').hidden=!(s.basmala&&$('ayah').value==='1');
 }
-function render(){stopWordAudio();generation++;stop();hintLevel=0;$('audio').onended=null;$('audio').pause();$('audio').hidden=true;$('audioStatus').textContent='';$('transcript').value='';$('result').replaceChildren();$('resultLabel').textContent='بانتظار تلاوتك';$('resultIntro').textContent='بعد التسميع ستظهر الكلمات المطابقة والاختلافات المحتملة هنا.';$('smartWhy').textContent='';$('score').hidden=true;listened=reviewed=false;$('notes').hidden=true;$('notesList').replaceChildren();const a=selected(),s=Number($('surah').value);showVerse();showRef();$('prev').disabled=s===1&&a.numberInSurah===1;$('next').disabled=s===114&&a.numberInSurah===surahs[s-1].ayahs.length;save('position',{surah:s,ayah:a.numberInSurah});updateSteps();updateProgress();tafsirShown=6;if($('tafsirBox')?.open)showTafsir();}
+function render(){Promise.resolve().then(showJump);stopWordAudio();generation++;stop();hintLevel=0;$('audio').onended=null;$('audio').pause();$('audio').hidden=true;$('audioStatus').textContent='';$('transcript').value='';$('result').replaceChildren();$('resultLabel').textContent='بانتظار تلاوتك';$('resultIntro').textContent='بعد التسميع ستظهر الكلمات المطابقة والاختلافات المحتملة هنا.';$('smartWhy').textContent='';$('score').hidden=true;listened=reviewed=false;$('notes').hidden=true;$('notesList').replaceChildren();const a=selected(),s=Number($('surah').value);showVerse();showRef();$('prev').disabled=s===1&&a.numberInSurah===1;$('next').disabled=s===114&&a.numberInSurah===surahs[s-1].ayahs.length;save('position',{surah:s,ayah:a.numberInSurah});updateSteps();updateProgress();tafsirShown=6;if($('tafsirBox')?.open)showTafsir();}
 function fillEnd(){const s=surahs[Number($('surah').value)-1],a=Number($('ayah').value),last=Math.min(s.ayahs.length,a+49);$('ayahEnd').replaceChildren(...Array.from({length:last-a+1},(_,i)=>new Option(a+i,a+i)));$('ayahEnd').disabled=$('ayah').disabled;}
 function fillAyahs(){const s=surahs[Number($('surah').value)-1];$('ayah').replaceChildren(...s.ayahs.map(a=>new Option(a.numberInSurah,a.numberInSurah)));fillEnd();}
 function changeSurah(){fillAyahs();render();}
+// Moving by Mushaf page (Madinah Mushaf, 604 pages) or by juz. A page that holds the end of one surah and the start of the
+// next opens the first surah's part, and says where the page continues.
+function pageAyat(page){const out=[];for(const s of surahs)for(const a of s.ayahs)if(a.page===page)out.push({surah:s.number,ayah:a.numberInSurah});return out;}
+function juzStartPage(juz){for(const s of surahs)for(const a of s.ayahs)if(a.juz===juz)return a.page;return 0;}
+function openPage(page){
+ page=Math.round(Number(page));if(!(page>=1&&page<=604)||!surahs.length)return '';
+ const ayat=pageAyat(page);if(!ayat.length)return '';
+ const first=ayat[0],part=ayat.filter(x=>x.surah===first.surah),last=part[part.length-1].ayah,next=ayat.find(x=>x.surah!==first.surah);
+ $('surah').value=first.surah;fillAyahs();$('ayah').value=first.ayah;fillEnd();$('ayahEnd').value=String(Math.min(last,first.ayah+49));render();
+ const name=QuranCompare.normalize(surahs[first.surah-1].name);
+ const note=next?` وتكمل الصفحة في ${QuranCompare.normalize(surahs[next.surah-1].name)}.`:'';
+ if(next)toast(`الصفحة ${page}: ${name} من الآية ${first.ayah} إلى ${last}.${note}`);
+ return `فتحتلك الصفحة ${page}: ${name} من الآية ${first.ayah} إلى ${last}.${note}`;
+}
+function openJuz(juz){juz=Math.round(Number(juz));if(!(juz>=1&&juz<=30))return '';const page=juzStartPage(juz);return page?openPage(page).replace(/^فتحتلك الصفحة/,`فتحتلك أول الجزء ${juz}، الصفحة`):'';}
+function showJump(){
+ if(!surahs.length)return;const s=surahs[Number($('surah').value)-1],a=s?.ayahs[Number($('ayah').value)-1];if(!a)return;
+ if(document.activeElement!==$('pageJump'))$('pageJump').value=a.page;$('juzJump').value=String(a.juz);
+}
+$('juzJump').replaceChildren(...Array.from({length:30},(_,i)=>new Option(`الجزء ${i+1}`,String(i+1))));
+$('pageJump').onchange=()=>{if(!openPage($('pageJump').value))showJump();};
+$('pageJump').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();$('pageJump').blur();$('pageJump').onchange();}};
+$('juzJump').onchange=()=>openJuz($('juzJump').value);
+globalThis.TarteelJump={page:openPage,juz:openJuz};
 function goTo(surah,ayah){$('surah').value=surah;fillAyahs();$('ayah').value=ayah;fillEnd();render();}
 // Moving past either end of a surah continues into the neighbouring surah.
 function step(delta){if(loading)return;let s=Number($('surah').value),a=Number($('ayah').value)+delta;if(a<1){if(s===1)return;s--;a=surahs[s-1].ayahs.length;}else if(a>surahs[s-1].ayahs.length){if(s===114)return;s++;a=1;}goTo(s,a);}
-async function init(){try{const responses=await Promise.all(['data/quran.json','data/simple.json'].map(x=>fetch(x)));if(responses.some(r=>!r.ok))throw Error();const [q,s]=await Promise.all(responses.map(r=>r.json()));surahs=q.data.surahs;simple=s.data.surahs;if(surahs.length!==114||simple.length!==114)throw Error();separateBasmala(surahs);separateBasmala(simple);for(const c of simple)for(const y of c.ayahs)y.text=y.text.split(/\s+/).filter(w=>QuranCompare.normalize(w)).join(' ');$('surah').replaceChildren(...surahs.map(s=>new Option(`${s.number}. ${s.name}`,s.number)));$('surah').disabled=$('ayah').disabled=false;loading=false;$('versePanel').classList.remove('loading','failed');globalThis.performance?.mark?.('tarteel-ready');fillSearch();const pos=load('position',null);$('hide').checked=load('hide',false)===true;if(pos&&surahs[pos.surah-1]?.ayahs[pos.ayah-1])goTo(pos.surah,pos.ayah);else changeSurah();$('engine').value=load('engine',globalThis.DeviceASR?.supported()||!SpeechRecognition?'device':'browser');updateEngine();updatePanel();}catch{$('versePanel').classList.remove('loading');$('versePanel').classList.add('failed');$('retry').hidden=false;$('verse').textContent='تعذّر تحميل المصحف. تحقق من الاتصال ثم أعد المحاولة.';$('status').textContent='النص القرآني غير متاح.';}}
+async function init(){try{const responses=await Promise.all(['data/quran.json','data/simple.json'].map(x=>fetch(x)));if(responses.some(r=>!r.ok))throw Error();const [q,s]=await Promise.all(responses.map(r=>r.json()));surahs=q.data.surahs;simple=s.data.surahs;if(surahs.length!==114||simple.length!==114)throw Error();separateBasmala(surahs);separateBasmala(simple);for(const c of simple)for(const y of c.ayahs)y.text=y.text.split(/\s+/).filter(w=>QuranCompare.normalize(w)).join(' ');$('surah').replaceChildren(...surahs.map(s=>new Option(`${s.number}. ${s.name}`,s.number)));$('surah').disabled=$('ayah').disabled=false;$('pageJump').disabled=$('juzJump').disabled=false;loading=false;$('versePanel').classList.remove('loading','failed');globalThis.performance?.mark?.('tarteel-ready');fillSearch();const pos=load('position',null);$('hide').checked=load('hide',false)===true;if(pos&&surahs[pos.surah-1]?.ayahs[pos.ayah-1])goTo(pos.surah,pos.ayah);else changeSurah();$('engine').value=load('engine',globalThis.DeviceASR?.supported()||!SpeechRecognition?'device':'browser');updateEngine();updatePanel();}catch{$('versePanel').classList.remove('loading');$('versePanel').classList.add('failed');$('retry').hidden=false;$('verse').textContent='تعذّر تحميل المصحف. تحقق من الاتصال ثم أعد المحاولة.';$('status').textContent='النص القرآني غير متاح.';}}
 $('surah').onchange=changeSurah;$('ayah').onchange=()=>{fillEnd();render();};$('ayahEnd').onchange=render;$('hide').onchange=()=>{save('hide',$('hide').checked);hintLevel=0;if(!loading)showVerse();};
 $('hint').onclick=()=>{hintLevel++;showVerse();};
 $('prev').onclick=()=>step(-1);$('next').onclick=()=>step(1);$('smart').onclick=smartPick;
@@ -129,16 +153,21 @@ $('reciter').value=RECITERS[load('reciter','husary')]?load('reciter','husary'):'
 $('reciter').onchange=()=>{save('reciter',$('reciter').value);$('audio').pause();$('audio').onended=null;$('audioStatus').textContent='';};
 function reciter(){return RECITERS[$('reciter').value]||RECITERS.husary;}
 function ayahAudio({surah,ayah}){return `https://everyayah.com/data/${reciter().dir}/${String(surah).padStart(3,'0')}${String(ayah).padStart(3,'0')}.mp3`;}
-// Plays the selected ayah or range, repeated as chosen (a common way to memorise).
+// Plays the selected ayah or range the way people memorise: each ayah several times, the whole passage several times,
+// and optionally a pause after each ayah to repeat it aloud (a fixed time, or as long as the ayah itself).
 $('repeat').value=String(load('repeat',1));$('repeat').onchange=()=>save('repeat',Number($('repeat').value));
+$('repeatEach').value=String(load('repeatEach',1));$('repeatEach').onchange=()=>save('repeatEach',Number($('repeatEach').value));
+$('repeatGap').value=String(load('repeatGap','0'));$('repeatGap').onchange=()=>save('repeatGap',$('repeatGap').value);
+function buildQueue(surah,nums,times,each){const queue=[];for(let r=0;r<times;r++)for(const ayah of nums)for(let e=0;e<each;e++)queue.push({surah,ayah,round:r+1,turn:e+1});return queue;}
+function gapSeconds(choice,length){return choice==='same'?Math.min(60,Math.max(1,length||0)):Math.max(0,Number(choice)||0);}
 $('listen').onclick=async()=>{
  if(loading)return;stopWordAudio();stop();
- const token=generation,surah=Number($('surah').value),nums=rangeNumbers(),times=Number($('repeat').value)||1,queue=[],name=reciter().name;
- for(let r=0;r<times;r++)nums.forEach(ayah=>queue.push({surah,ayah}));
+ const token=generation,surah=Number($('surah').value),nums=rangeNumbers(),times=Number($('repeat').value)||1,each=Number($('repeatEach').value)||1,gap=$('repeatGap').value,queue=buildQueue(surah,nums,times,each),name=reciter().name;
+ let current=null;
  const total=queue.length,audio=$('audio'),live=()=>token===generation;let failed=0,slowTimer=0;
  const status=text=>{$('audioStatus').textContent=text;};
  // Position in the queue, so a skipped ayah does not shift the numbering.
- const playing=()=>status(`تلاوة ${name}`+(total>1?` — ${total-queue.length} من ${total}`:''));
+ const playing=()=>status(`تلاوة ${name}`+(current&&nums.length>1?` — الآية ${current.ayah}`:'')+(current&&each>1?` (${current.turn} من ${each})`:'')+(times>1&&current?` · المقطع ${current.round} من ${times}`:'')+(total>1?` — ${total-queue.length} من ${total}`:''));
  const finish=()=>{clearTimeout(slowTimer);audio.onended=audio.onerror=audio.onwaiting=audio.onplaying=null;};
  // Start downloading the next ayah while this one plays, so a passage flows without gaps on slow connections.
  const prefetch=()=>{if(queue[0]&&typeof Audio!=='undefined'){const next=new Audio();next.preload='auto';next.src=ayahAudio(queue[0]);}};
@@ -147,7 +176,7 @@ $('listen').onclick=async()=>{
  const playNext=async()=>{
   if(!live())return;
   if(!queue.length){finish();if(total>1)status('انتهى الاستماع.');return;}
-  const item=queue.shift();let done=false;status('جارٍ تحميل التلاوة…');slow();
+  const item=queue.shift();current=item;let done=false;status('جارٍ تحميل التلاوة…');slow();
   // One missing or unreachable file skips to the next ayah instead of silently stopping the passage.
   const fail=()=>{
    if(done||!live())return;done=true;clearTimeout(slowTimer);failed++;
@@ -159,7 +188,13 @@ $('listen').onclick=async()=>{
   try{audio.src=ayahAudio(item);audio.hidden=false;await audio.play();if(!live()||done)return;clearTimeout(slowTimer);failed=0;playing();listened=true;updateSteps();prefetch();}
   catch{fail();}
  };
- audio.onended=playNext;await playNext();
+ // After each ayah: a pause to repeat it aloud, if chosen, then the next one.
+ audio.onended=()=>{
+  if(!live())return;const wait=queue.length?gapSeconds(gap,audio.duration):0;
+  if(!wait)return playNext();
+  status(`🗣 ردّد الآية ${current?.ayah||''} الآن…`);setTimeout(()=>{if(live())playNext();},wait*1000);
+ };
+ await playNext();
 };
 // Compares the recitation with the selected ayah or range. Each word is traced back to its ayah, so a range
 // gets per-ayah scores (for progress and the learning models) and the word-audio buttons point at the right ayah.

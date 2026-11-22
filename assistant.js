@@ -257,6 +257,12 @@ async function knowledgeTurn(t,raw=t){
  const current=()=>({surah:Number($('surah').value),ayah:rangeNumbers()[0]});
  const where=()=>{const kursi=/ايه الكرسي/.test(t),surah=kursi?2:findSurahIn(t),ayah=kursi?255:+(t.match(/(?:الايه|ايه)(?: رقم)? (\d+)/)?.[1]||0);return surah?{surah,ayah:ayah||1}:{surah:current().surah,ayah:ayah||current().ayah};};
  const after=re=>(t.match(re)?.[1]||'').replace(/ (في|فى) (القران|المصحف).*$/,'').trim();
+ // Mushaf pages and juz: «افتح صفحة 50»، «الجزء 30»، «افتح جزء عم».
+ const pageAsk=t.match(/^(?:(?:افتح|افتحلي|روح|روحلي|وديني|اعرض|اعرضلي)(?: (?:ل|علي|الي))? )?(?:ال)?صفحه (?:رقم )?(\d{1,4})$/);
+ if(pageAsk&&globalThis.TarteelJump)return TarteelJump.page(+pageAsk[1])||'مصحف المدينة 604 صفحة. اختر رقمًا من 1 إلى 604.';
+ const JUZ_NAMES={'عم':30,'تبارك':29,'قد سمع':28,'الذاريات':27,'الاحقاف':26};
+ const juzAsk=t.match(/^(?:(?:افتح|افتحلي|روح|روحلي|وديني|اعرض|اعرضلي)(?: (?:ل|علي|الي))? )?(?:ال)?جزء (?:رقم )?(\d{1,3}|عم|تبارك|قد سمع|الذاريات|الاحقاف)$/);
+ if(juzAsk&&globalThis.TarteelJump)return TarteelJump.juz(JUZ_NAMES[juzAsk[1]]||+juzAsk[1])||'القرآن 30 جزءًا. اختر رقمًا من 1 إلى 30.';
  // 1. Follow-ups on the last answer: more of the same tafsir, the same ayah from another book, or open a result.
  if(lastTafsir&&/^(?:طب |طيب |و)?(?:كمل|اكمل|كمان|زود|الباقي|باقي التفسير|اكتر|المزيد|عايز اكتر|كمل التفسير|وبعدين)(?: |$)/.test(t)){
   const {paragraphs,at}=lastTafsir;if(at>=paragraphs.length)return 'كده خلص تفسير الآية دي. تحب تسمع تفسير تاني؟ قول مثلًا «وعند القرطبي».';

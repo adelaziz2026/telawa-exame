@@ -597,3 +597,6 @@ body.mushaf-active{overflow:hidden}
 .rec-big{width:46px;height:46px;background:var(--primary);color:var(--on-primary);border:0;font-size:18px}
 .rec-has-player .rec-page{padding-bottom:150px}
 @media (max-width:520px){.rec-list{grid-template-columns:1fr}.rec-filter{flex-wrap:wrap}.rec-filter input[type=search]{flex-basis:100%}.rec-title h1{font-size:21px}.rec-tools div{flex-wrap:wrap}}
+
+#pageJump{width:84px;box-sizing:border-box;padding:10px;min-height:56px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);color:var(--ink);font:inherit;font-size:16px;text-align:center}
+#juzJump{min-width:96px}
