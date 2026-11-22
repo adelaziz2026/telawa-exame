@@ -33,12 +33,13 @@ const keep=item=>store('readwrite',s=>s.put(item)).then(()=>{pending[item.surah]
 const forget=surah=>store('readwrite',s=>s.delete(surah)).then(()=>{delete pending[surah];});
 const base64=blob=>new Promise((ok,fail)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(',')[1]||'');r.onerror=()=>fail(r.error);r.readAsDataURL(blob);});
 
-async function phoneSignIn(password){
+async function phoneSignIn(password,code){
  const p=phone();
  try{
-  const r=await nativeRequest('POST',pc('/login'),{headers:{'Content-Type':'application/json'},data:{user:p.user,password,device:true}});
+  const r=await nativeRequest('POST',pc('/login'),{headers:{'Content-Type':'application/json'},data:{user:p.user,password,code,device:true}});
   if(r.status===200&&r.data.token){setPhone({addr:p.addr,user:p.user,token:r.data.token});return 'ok';}
-  if(r.status===401){setPhone({addr:p.addr,user:''});return 'wrong';}
+  if(r.status===401){setPhone({addr:p.addr,user:''});return r.data.error==='pair_code'?'code':'wrong';}
+  if(r.status===429)return 'locked';
   return 'error';
  }catch{return 'offline';}
 }
@@ -48,8 +49,8 @@ async function sendPending(){
  let p=phone();
  if(!p.token){
   if(!p.password){note.textContent='سجّل الدخول مرة أخرى وأنت على شبكة الكمبيوتر.';return;}
-  const s=await phoneSignIn(p.password);
-  if(s!=='ok'){note.textContent=s==='wrong'?'كلمة المرور غير صحيحة.':'الكمبيوتر غير متاح. تأكد أنك على شبكة Wi-Fi نفسها وأن start-recorder.cmd يعمل.';return;}
+  const s=await phoneSignIn(p.password,p.code);
+  if(s!=='ok'){note.textContent={wrong:'كلمة المرور غير صحيحة. سجّل الدخول مرة أخرى.',code:'تغيّر رمز الاقتران. سجّل الدخول مرة أخرى بالرمز الظاهر على الكمبيوتر.',locked:'محاولات كثيرة. حاول بعد قليل.'}[s]||'الكمبيوتر غير متاح. تأكد أنك على شبكة Wi-Fi نفسها وأن start-recorder.cmd يعمل.';if(s==='wrong'||s==='code')showPhone();return;}
   p=phone();
  }
  let sent=0;
@@ -192,13 +193,15 @@ $('recPublish').onclick=async()=>{
 };
 // Phone sign-in: checked by the computer when it can be reached; otherwise recording starts now and the check happens when sending.
 $('recPhoneForm').onsubmit=async e=>{
- e.preventDefault();const note=$('recPhoneLoginNote'),addr=$('recAddr').value.trim(),user=$('recPUser').value.trim(),password=$('recPPass').value;
- if(!addr||!user||!password)return;
+ e.preventDefault();const note=$('recPhoneLoginNote'),addr=$('recAddr').value.trim(),user=$('recPUser').value.trim(),password=$('recPPass').value,code=$('recCode').value.trim();
+ if(!addr||!user||!password||!code)return;
  setPhone({addr,user});note.textContent='جارٍ الاتصال بالكمبيوتر…';
- const s=await phoneSignIn(password);
+ const s=await phoneSignIn(password,code);
  if(s==='wrong'){note.textContent='اسم المستخدم أو كلمة المرور غير صحيحة.';return;}
- if(s==='offline'||s==='error')setPhone({addr,user,password});
- $('recPPass').value='';note.textContent='';
+ if(s==='code'){note.textContent='رمز الاقتران غير صحيح. اكتب الرمز الظاهر في نافذة start-recorder.';return;}
+ if(s==='locked'){note.textContent='محاولات خاطئة كثيرة. حاول بعد قليل.';return;}
+ if(s==='offline'||s==='error')setPhone({addr,user,password,code});
+ $('recPPass').value='';$('recCode').value='';note.textContent='';
  $('recPhoneNote').textContent=s==='ok'?'✓ تم الدخول. التسجيلات تُحفظ على الهاتف وتُرسل إلى الكمبيوتر.':'الكمبيوتر غير متاح الآن. يمكنك التسجيل، وسيُتحقق من الدخول ويُرسل التسجيل عند الاتصال بشبكته.';
  render();
 };

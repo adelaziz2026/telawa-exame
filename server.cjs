@@ -88,7 +88,12 @@ if (require.main === module) {
     else console.error(err.message);
     process.exit(1);
   });
-  server.listen(port, host, () => { console.log(`Tarteel: http://${host === '127.0.0.1' ? 'localhost' : host}:${port}`); setImmediate(warm); });
+  server.listen(port, host, () => {
+    console.log(`Tarteel: http://${host === '127.0.0.1' ? 'localhost' : host}:${port}`);
+    const {PAIR_CODE} = require('./recordings.cjs');
+    if (PAIR_CODE) console.log(`\n  Phone pairing code / رمز الاقتران للهاتف:  ${PAIR_CODE}\n  (a new code is made every time this window starts / يتغيّر الرمز عند كل تشغيل)\n`);
+    setImmediate(warm);
+  });
   // Ctrl+C or a service stop: finish open requests, then exit.
   for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { console.log('إيقاف الخادم…'); server.close(() => process.exit(0)); setTimeout(() => process.exit(0), 1000).unref(); });
 }

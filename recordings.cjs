@@ -20,7 +20,12 @@ const AUDIO = {'audio/webm': 'webm', 'audio/ogg': 'ogg', 'audio/opus': 'opus', '
   'audio/amr': 'amr', 'audio/3gpp': '3gp', 'video/3gpp': '3gp', 'video/mp4': 'mp4'};
 const FILE = new RegExp(`^(?:index\\.json|surah-(\\d{3})\\.(${EXTS.join('|')}))$`);
 const MAX_BYTES = 95 * 1024 * 1024; // GitHub refuses files of 100 MB or more
-const sessions = new Map(), failures = [];
+const sessions = new Map(), failures = [], lockouts = new Map();
+// Home Wi-Fi mode: a new 6-digit code is shown on this computer's screen at every start, and a phone must enter it with the
+// password. Someone else on the network cannot sign in by knowing or guessing the password alone.
+const PAIR_CODE = process.env.RECORD_LAN === '1' ? String(crypto.randomInt(100000, 1000000)) : '';
+const needsPairCode = address => !LOOPBACK.test(address || '');
+const sameText = (a, b) => crypto.timingSafeEqual(crypto.createHash('sha256').update(String(a)).digest(), crypto.createHash('sha256').update(String(b)).digest());
 const json = (req, res, send, status, body, headers = {}) => send(req, res, status, {'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...headers}, JSON.stringify(body));
 const LOOPBACK = /^(?:127\.0\.0\.1|::1|::ffff:127\.0\.0\.1)$/, HOME_NETWORK = /^(?:::ffff:)?(?:10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.)/;
 const local = req => { const a = req.socket.remoteAddress || ''; return !process.env.RENDER && (LOOPBACK.test(a) || (process.env.RECORD_LAN === '1' && HOME_NETWORK.test(a))); };
@@ -83,12 +88,17 @@ async function handleRecordings(req, res, send, pathname) {
   // A custom header cannot be sent by another site without permission, so no page elsewhere can act for the signed-in person.
   if (req.method !== 'GET' && req.headers['x-recorder'] !== '1') return json(req, res, send, 403, {error: 'bad_request'});
   if (route === '/login' && req.method === 'POST') {
-    const now = Date.now(); while (failures.length && now - failures[0] > 60000) failures.shift();
-    if (failures.length >= 5) return json(req, res, send, 429, {error: 'wait', message: 'محاولات كثيرة. انتظر دقيقة ثم حاول مرة أخرى.'});
+    // Five wrong tries a minute in all, and ten wrong tries from one device lock that device out for 15 minutes.
+    const now = Date.now(), address = req.socket.remoteAddress || '', mine = (lockouts.get(address) || []).filter(t => now - t < 900000);
+    while (failures.length && now - failures[0] > 60000) failures.shift();
+    if (failures.length >= 5 || mine.length >= 10) return json(req, res, send, 429, {error: 'wait', message: mine.length >= 10 ? 'محاولات خاطئة كثيرة من هذا الجهاز. حاول بعد 15 دقيقة.' : 'محاولات كثيرة. انتظر دقيقة ثم حاول مرة أخرى.'});
+    const fail = body => { failures.push(now); lockouts.set(address, [...mine, now]); return json(req, res, send, 401, body); };
     let body; try { body = JSON.parse(await readBody(req, 4096)); } catch { return json(req, res, send, 400, {error: 'bad_request'}); }
+    if (needsPairCode(address) && (!PAIR_CODE || !sameText(body.code || '', PAIR_CODE))) return fail({error: 'pair_code', message: 'رمز الاقتران غير صحيح. اكتب الرمز الظاهر على شاشة الكمبيوتر.'});
     const ok = checkLogin(body.user || '', body.password || '');
     if (ok === null) return json(req, res, send, 503, {error: 'no_login', message: 'لم يُضبط حساب التسجيل بعد.'});
-    if (!ok) { failures.push(now); return json(req, res, send, 401, {error: 'wrong', message: 'اسم المستخدم أو كلمة المرور غير صحيحة.'}); }
+    if (!ok) return fail({error: 'wrong', message: 'اسم المستخدم أو كلمة المرور غير صحيحة.'});
+    lockouts.delete(address);
     const token = crypto.randomBytes(24).toString('hex');
     if (body.device) {
       fs.writeFileSync(devicesFile(), JSON.stringify([...readDevices(), {hash: fingerprint(token), expires: now + 30 * 86400000}]));
@@ -125,7 +135,7 @@ async function handleRecordings(req, res, send, pathname) {
   return json(req, res, send, 404, {error: 'not_found'});
 }
 
-module.exports = {handleRecordings, hashPassword, readIndex, FILE, HOME_NETWORK};
+module.exports = {handleRecordings, hashPassword, readIndex, FILE, HOME_NETWORK, PAIR_CODE, needsPairCode};
 if (require.main === module) {
   const [flag, user, password] = process.argv.slice(2);
   if (flag !== '--set-login' || !user || !password) { console.log('Usage: node recordings.cjs --set-login <user> <password>'); process.exit(1); }

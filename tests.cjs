@@ -217,6 +217,25 @@ test('surah recordings: the phone gets a device key, sends any common audio file
   }finally{server.close();}
  }finally{delete process.env.RECORDINGS_DIR;fs.rmSync(dir,{recursive:true,force:true});}
 });
+test('surah recordings: home Wi-Fi sign-in needs the pairing code shown on the computer, and wrong tries lock out',async()=>{
+ const R=require('./recordings.cjs');assert.equal(R.PAIR_CODE,'');assert.equal(R.needsPairCode('127.0.0.1'),false);assert.equal(R.needsPairCode('192.168.1.5'),true);
+ const lan=Object.values(require('node:os').networkInterfaces()).flat().find(n=>n.family==='IPv4'&&!n.internal&&R.HOME_NETWORK.test(n.address));
+ if(!lan)return; // no home-network address on this machine: the HTTP part cannot run here
+ const dir=fs.mkdtempSync(require('node:path').join(require('node:os').tmpdir(),'rec-'));fs.writeFileSync(dir+'/.login.json',JSON.stringify({user:'moh',...R.hashPassword('moh')}));
+ const port=String(18700+Math.floor(Math.random()*800));
+ const child=require('node:child_process').spawn(process.execPath,['server.cjs'],{env:{...process.env,HOST:'0.0.0.0',PORT:port,RECORD_LAN:'1',RECORDINGS_DIR:dir},stdio:['ignore','pipe','pipe']});
+ try{
+  let out='';const ready=await new Promise((ok,fail)=>{child.stdout.on('data',d=>{out+=d;const code=/:\s+(\d{6})\s/.exec(out);if(out.includes('0.0.0.0:'+port)&&code)ok({port,code:code[1]});});setTimeout(()=>fail(Error('server did not start: '+out)),15000);});
+  const url='http://'+lan.address+':'+ready.port+'/api/recordings/login',H={'x-recorder':'1','content-type':'application/json'};
+  const tryLogin=body=>fetch(url,{method:'POST',headers:H,body:JSON.stringify({user:'moh',password:'moh',device:true,...body})});
+  assert.equal((await tryLogin({})).status,401);
+  const wrong=await tryLogin({code:'000000'});assert.equal(wrong.status,401);assert.equal((await wrong.json()).error,'pair_code');
+  const ok=await tryLogin({code:ready.code});assert.equal(ok.status,200);assert.match((await ok.json()).token,/^[a-f0-9]{48}$/);
+  for(let i=0;i<3;i++)await tryLogin({password:'no',code:ready.code});
+  // two wrong codes and three wrong passwords make five wrong tries within a minute, so the next one is refused
+  assert.equal((await tryLogin({password:'no',code:ready.code})).status,429);
+ }finally{child.kill();fs.rmSync(dir,{recursive:true,force:true});}
+});
 test('server compresses the Quran data and revalidates it with ETags',()=>withServer(async request=>{
  const gz=await request('/data/simple.json',{headers:{'accept-encoding':'gzip'}});
  assert.equal(gz.status,200);assert.equal(gz.headers['content-encoding'],'gzip');assert.match(gz.headers['cache-control'],/max-age/);

@@ -573,3 +573,8 @@ body.mushaf-active{overflow:hidden}
 .rec-card audio{width:100%}
 .rec-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.rec-actions audio{flex-basis:100%}.rec-note{flex-basis:100%;color:var(--gold-ink);font-size:12px}
 .rec-empty{color:var(--muted);padding:20px;text-align:center}
+.rec-help{margin-bottom:16px;padding:0;overflow:hidden}
+.rec-help summary{cursor:pointer;padding:14px 16px;font-weight:700;color:var(--primary);list-style-position:inside}
+.rec-help-body{padding:0 18px 14px;border-top:1px solid var(--line);line-height:1.9}
+.rec-help-body h3{margin:14px 0 4px;font-size:16px;color:var(--primary)}
+.rec-help-body ol,.rec-help-body ul{margin:0;padding-right:22px}.rec-help-body p{margin:0}

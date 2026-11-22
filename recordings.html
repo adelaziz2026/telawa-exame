@@ -14,6 +14,43 @@
   <div class="rec-progress" aria-live="polite"><div class="rec-bar"><span id="recFill"></span></div><small id="recCount">جارٍ التحميل…</small></div>
  </header>
 
+ <details class="card rec-help">
+  <summary>📘 طريقة الاستخدام</summary>
+  <div class="rec-help-body">
+   <h3>🎧 للاستماع</h3>
+   <ol>
+    <li>ابحث عن السورة بالاسم أو الرقم، أو اختر «المسجّلة فقط».</li>
+    <li>اضغط ▶ في مشغّل السورة. السور التي لا يظهر لها مشغّل لم تُسجَّل بعد.</li>
+   </ol>
+   <h3>💻 التسجيل من الكمبيوتر</h3>
+   <ol>
+    <li>شغّل <b>start.cmd</b> أو <b>start-recorder.cmd</b> من مجلد التطبيق، ثم افتح <span dir="ltr">http://localhost:8787/recordings.html</span>.</li>
+    <li>سجّل الدخول بحساب المسجِّل.</li>
+    <li>اضغط <b>🎙 تسجيل</b> ثم <b>⏹ إيقاف</b>، واستمع للتسجيل، ثم <b>💾 حفظ</b>. أو اضغط <b>📁 رفع ملف</b> لاختيار ملف صوتي جاهز.</li>
+    <li>تُحفظ الملفات في مجلد <b>Taskeeeel</b> على الكمبيوتر.</li>
+    <li>اضغط <b>📤 نشر على الموقع</b> ليسمعها الزوار خلال دقيقة أو دقيقتين.</li>
+   </ol>
+   <h3>📱 التسجيل من تطبيق الهاتف</h3>
+   <ol>
+    <li>على الكمبيوتر، شغّل <b>start-recorder.cmd</b>، وانسخ العنوان الذي يظهر مثل <span dir="ltr">192.168.1.20:8787</span>. إذا سألك Windows، فاسمح لـ Node.js بالشبكات الخاصة فقط.</li>
+    <li>في التطبيق، افتح هذه الصفحة، واكتب عنوان الكمبيوتر، و<b>رمز الاقتران</b> المكوّن من 6 أرقام الظاهر في نافذة start-recorder، وبيانات حساب المسجِّل، ثم اضغط «دخول». يجب أن يكون الهاتف على شبكة Wi-Fi نفسها عند الدخول، ويبقى الدخول صالحًا 30 يومًا.</li>
+    <li>سجّل أو ارفع ملفًا لأي سورة. يُحفظ على الهاتف حتى لو كنت خارج المنزل.</li>
+    <li>عند العودة إلى شبكة المنزل، اضغط <b>📤 إرسال إلى الكمبيوتر</b>، ثم <b>🌐 نشر على الموقع</b>.</li>
+   </ol>
+   <h3>📁 الملفات المقبولة</h3>
+   <p>mp3 وm4a وmp4 وaac وwav وogg وopus وwebm وflac وamr و3gp، حتى 95 ميجابايت. يفضَّل mp3 أو m4a لأنهما يعملان في كل المتصفحات.</p>
+   <h3>🔒 ملاحظات</h3>
+   <ul>
+    <li>التسجيل والحفظ متاحان لحساب المسجِّل فقط، والزوار يستمعون فقط.</li>
+    <li>كل تسجيل يُنشر يصبح متاحًا لأي زائر.</li>
+    <li>الحذف من الموقع يتم من الكمبيوتر: احذف التسجيل ثم اضغط «نشر على الموقع».</li>
+    <li>اختر كلمة مرور قوية لحساب المسجِّل، خاصة عند استخدام start-recorder.cmd على شبكة المنزل.</li>
+    <li>يتغيّر رمز الاقتران عند كل تشغيل لـ start-recorder، ويتوقف الدخول مؤقتًا بعد المحاولات الخاطئة الكثيرة.</li>
+    <li>شغّل start-recorder.cmd على شبكة منزلك فقط، وليس على شبكة عامة كالمقاهي والمطارات، وأغلق نافذته بعد الانتهاء.</li>
+   </ul>
+  </div>
+ </details>
+
  <section id="recLogin" class="card rec-login" hidden>
   <h2>🎙 دخول المسجِّل</h2>
   <p class="muted">التسجيل متاح لصاحب الحساب من هذا الكمبيوتر فقط، والزوار يستمعون.</p>
@@ -30,6 +67,7 @@
   <p class="muted">شغّل <b>start-recorder.cmd</b> على الكمبيوتر، واكتب العنوان الذي يظهر فيه. تُحفظ التسجيلات على الهاتف، وتُرسل إلى الكمبيوتر عندما تكون على شبكة Wi-Fi نفسها.</p>
   <form id="recPhoneForm">
    <label>عنوان الكمبيوتر<input id="recAddr" inputmode="url" placeholder="192.168.1.20:8787" dir="ltr" required></label>
+   <label>رمز الاقتران (يظهر في نافذة start-recorder على الكمبيوتر)<input id="recCode" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" dir="ltr" autocomplete="one-time-code" required></label>
    <label>اسم المستخدم<input id="recPUser" autocomplete="username" required></label>
    <label>كلمة المرور<span class="rec-pass"><input id="recPPass" type="password" autocomplete="current-password" required><button type="button" id="recPEye" aria-label="إظهار كلمة المرور" title="إظهار كلمة المرور">👁</button></span></label>
    <button type="submit" class="rec-primary">دخول</button>
