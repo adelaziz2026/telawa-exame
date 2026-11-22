@@ -256,6 +256,14 @@ test('navigation: a Mushaf page or juz opens its ayat, and the assistant underst
  assert.match(await say('الجزء 2'),/^فتحتلك أول الجزء 2، الصفحة 22: /);
  assert.match(await say('صفحة 900'),/604 صفحة/);
 });
+test('a repeated word or phrase is not counted as a mistake, but a different extra word is',()=>{
+ const C=require('./compare.js'),types=(e,h)=>C.compare(e,h).map(i=>i.type),count=(list,t)=>list.filter(x=>x===t).length;
+ const back=types('الحمد لله رب العالمين','الحمد لله الحمد لله رب العالمين');assert.equal(count(back,'repeated'),2);assert.equal(count(back,'correct'),4);assert.equal(count(back,'extra'),0);
+ const stutter=types('الحمد لله رب العالمين','الحمد لله رب رب العالمين');assert.equal(count(stutter,'repeated'),1);assert.equal(count(stutter,'extra'),0);
+ const restart=types('قل هو الله احد الله الصمد','قل هو الله قل هو الله احد الله الصمد');assert.equal(count(restart,'repeated'),3);assert.equal(count(restart,'correct'),6);
+ assert.deepEqual(types('الحمد لله','الحمد لله كثيرا'),['correct','correct','extra']);
+ assert.equal(C.explain({type:'repeated',spoken:'لله'}),'');
+});
 test('server compresses the Quran data and revalidates it with ETags',()=>withServer(async request=>{
  const gz=await request('/data/simple.json',{headers:{'accept-encoding':'gzip'}});
  assert.equal(gz.status,200);assert.equal(gz.headers['content-encoding'],'gzip');assert.match(gz.headers['cache-control'],/max-age/);

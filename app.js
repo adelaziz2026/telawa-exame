@@ -108,7 +108,7 @@ function showVerse(){
  else{$('verse').textContent=many?nums.map(n=>s.ayahs[n-1].text+marker(n)).join(' '):selected().text;$('hint').hidden=true;}
  $('basmala').textContent=s.basmala;$('basmala').hidden=!(s.basmala&&$('ayah').value==='1');
 }
-function render(){Promise.resolve().then(showJump);stopWordAudio();generation++;stop();hintLevel=0;$('audio').onended=null;$('audio').pause();$('audio').hidden=true;$('audioStatus').textContent='';$('transcript').value='';$('result').replaceChildren();$('resultLabel').textContent='بانتظار تلاوتك';$('resultIntro').textContent='بعد التسميع ستظهر الكلمات المطابقة والاختلافات المحتملة هنا.';$('smartWhy').textContent='';$('score').hidden=true;listened=reviewed=false;$('notes').hidden=true;$('notesList').replaceChildren();const a=selected(),s=Number($('surah').value);showVerse();showRef();$('prev').disabled=s===1&&a.numberInSurah===1;$('next').disabled=s===114&&a.numberInSurah===surahs[s-1].ayahs.length;save('position',{surah:s,ayah:a.numberInSurah});updateSteps();updateProgress();tafsirShown=6;if($('tafsirBox')?.open)showTafsir();}
+function render(){Promise.resolve().then(showJump);if($('resultSummary'))$('resultSummary').hidden=true;$('result').classList?.remove('only-mistakes');stopWordAudio();generation++;stop();hintLevel=0;$('audio').onended=null;$('audio').pause();$('audio').hidden=true;$('audioStatus').textContent='';$('transcript').value='';$('result').replaceChildren();$('resultLabel').textContent='بانتظار تلاوتك';$('resultIntro').textContent='بعد التسميع ستظهر الكلمات المطابقة والاختلافات المحتملة هنا.';$('smartWhy').textContent='';$('score').hidden=true;listened=reviewed=false;$('notes').hidden=true;$('notesList').replaceChildren();const a=selected(),s=Number($('surah').value);showVerse();showRef();$('prev').disabled=s===1&&a.numberInSurah===1;$('next').disabled=s===114&&a.numberInSurah===surahs[s-1].ayahs.length;save('position',{surah:s,ayah:a.numberInSurah});updateSteps();updateProgress();tafsirShown=6;if($('tafsirBox')?.open)showTafsir();}
 function fillEnd(){const s=surahs[Number($('surah').value)-1],a=Number($('ayah').value),last=Math.min(s.ayahs.length,a+49);$('ayahEnd').replaceChildren(...Array.from({length:last-a+1},(_,i)=>new Option(a+i,a+i)));$('ayahEnd').disabled=$('ayah').disabled;}
 function fillAyahs(){const s=surahs[Number($('surah').value)-1];$('ayah').replaceChildren(...s.ayahs.map(a=>new Option(a.numberInSurah,a.numberInSurah)));fillEnd();}
 function changeSurah(){fillAyahs();render();}
@@ -207,6 +207,18 @@ function withoutOpening(text,surah,first){
  if(basmala.length&&basmala.filter((w,i)=>n(words[i])===n(w)).length>=3)words=words.slice(basmala.length);
  return words.join(' ');
 }
+// Counts of each kind of word above the result, and a switch that hides the matching words to focus on mistakes.
+function renderSummary(items){
+ const box=$('resultSummary');if(!box)return;
+ const n=t=>items.filter(i=>i.type===t).length,kinds=[['correct','✓ صحيحة'],['changed','≈ مختلفة'],['missing','− ناقصة'],['extra','+ زائدة'],['repeated','↺ إعادة لا تُحسب']].filter(([t])=>n(t));
+ box.replaceChildren(...kinds.map(([t,label])=>make('span',`sum-chip ${t}`,`${label}: ${n(t)}`)));
+ if(n('changed')+n('missing')+n('extra')&&n('correct')){
+  const b=make('button','sum-toggle','الأخطاء فقط');b.type='button';b.setAttribute?.('aria-pressed','false');
+  b.onclick=()=>{const on=$('result').classList.toggle('only-mistakes');b.textContent=on?'كل الكلمات':'الأخطاء فقط';b.setAttribute('aria-pressed',String(on));};
+  box.append(b);
+ }
+ box.hidden=false;
+}
 function review(){
  if(loading)return;const text=$('transcript').value.trim();
  if(!text){$('status').textContent='لم تصل كلمات للمقارنة. اقرأ مجددًا أو أدخل النص يدويًا.';return;}
@@ -216,20 +228,21 @@ function review(){
  for(const item of items){if(item.expected){while(inSeg>=segs[seg].words&&seg<segs.length-1){seg++;inSeg=0;}item.index=inSeg++;}item.seg=seg;segs[seg].items.push(item);}
  const nodes=[];
  for(const g of segs){
-  if(many)nodes.push(make('span','ayah-sep',marker(g.n).trim()));
+  // Each ayah of a passage shows its own score next to its number.
+  if(many){const counted=g.items.filter(i=>i.type!=='repeated'),own=counted.length?Math.round(counted.filter(i=>i.type==='correct').length/counted.length*100):0,sep=make('span','ayah-sep',marker(g.n).trim());sep.append(make('small',`sep-score ${own>=90?'good':own>=60?'warn':'bad'}`,own+'٪'));nodes.push(sep);}
   for(const item of g.items){
    const span=make('span',`word ${item.type}`,item.expected||item.spoken);
-   if(item.type!=='correct')span.append(make('small','',item.type==='missing'?'لم يُسمع':item.type==='extra'?'كلمة إضافية':`المسموع: ${item.spoken}`));
+   if(item.type!=='correct')span.append(make('small','',item.type==='missing'?'لم يُسمع':item.type==='extra'?'كلمة إضافية':item.type==='repeated'?'إعادة — لا تُحسب':`المسموع: ${item.spoken}`));
    if(item.expected&&item.type!=='correct'){const button=make('button','word-listen','🔊 استمع للكلمة');button.setAttribute('aria-label','استمع للنطق الصحيح: '+item.expected);button.onclick=()=>playCorrection(g.key,item.index,item.expected,g.text,button,reviewToken);span.append(button);}
    nodes.push(span);
   }
  }
  $('result').replaceChildren(...nodes);
  const now=Date.now();
- for(const g of segs){if(!g.items.length)continue;const score=Math.round(g.items.filter(i=>i.type==='correct').length/g.items.length*100);scores[g.key]=score;QuranLearning.learn(brain,g.key,score,now,g.words);recordActivity();}
+ for(const g of segs){const counted=g.items.filter(i=>i.type!=='repeated');if(!counted.length)continue;const score=Math.round(counted.filter(i=>i.type==='correct').length/counted.length*100);scores[g.key]=score;QuranLearning.learn(brain,g.key,score,now,g.words);recordActivity();}
  for(const item of items)for(const p of QuranCompare.confusedLetters?.(item)||[])letterSlips[p.expected+p.spoken]=(letterSlips[p.expected+p.spoken]||0)+1;
  save('scores',scores);save('learning',brain);save('letters',letterSlips);updateProgress();showRef();
- const count=items.filter(i=>i.type!=='correct').length,score=Math.round((items.length-count)/items.length*100);
+ const counted=items.filter(i=>i.type!=='repeated'),count=counted.filter(i=>i.type!=='correct').length,score=counted.length?Math.round((counted.length-count)/counted.length*100):0;renderSummary(items);
  $('resultLabel').textContent=count?`${count===1?'موضع واحد':count===2?'موضعان':count<=10?`${count} مواضع`:`${count} موضعًا`} للمراجعة · ${score}٪`:'الكلمات متطابقة';showScore(score);reviewed=true;updateSteps();renderNotes(items);updatePanel();
  $('resultIntro').textContent=(many?`نتيجة ${segs.length} آيات معًا. `:'')+'راجع هذه المواضع بالاستماع؛ قد يكون الاختلاف ناتجًا عن التعرف الصوتي. تطابق الكلمات لا يعني صحة التجويد.';
 }

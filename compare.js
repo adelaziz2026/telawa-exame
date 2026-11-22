@@ -45,7 +45,33 @@ function compare(expected,spoken){
   else if(i&&d[i][j]===d[i-1][j]+1){result.push({type:'missing',expected:a[--i]});}
   else{result.push({type:'extra',spoken:b[--j]});}
  }
- return result.reverse();
+ return markRepeats(result.reverse());
+}
+// Readers often go back and repeat a word or a phrase («الحمد لله الحمد لله رب العالمين»), or stutter on the next
+// word. Extra words that repeat what was just read, or the words about to be read, are marked «repeated» and are not
+// counted as mistakes. Any other extra word still counts.
+function markRepeats(items){
+ const key=w=>spell(normalize(w||''));
+ // Two spoken tokens matched to one word, where one of them is the word itself and the other repeats it or the word
+ // before («رب رب العالمين» read as «رب» + «رب العالمين»): split them back into a repetition and the correct word.
+ for(let k=0;k<items.length;k++){
+  const it=items[k];if(it.type!=='changed'||!/\s/.test(it.spoken||''))continue;
+  const [p1,p2]=it.spoken.split(/\s+/),word=key(it.expected),prev=[];
+  for(let m=k-1;m>=0&&prev.length<8;m--)if(items[m].expected&&items[m].type!=='missing')prev.push(key(items[m].expected));
+  if(key(p2)===word&&(key(p1)===word||prev.includes(key(p1))))items.splice(k,1,{type:'repeated',spoken:p1},{type:'correct',expected:it.expected,spoken:p2});
+  else if(key(p1)===word&&key(p2)===word)items.splice(k,1,{type:'correct',expected:it.expected,spoken:p1},{type:'repeated',spoken:p2});
+ }
+ for(let k=0;k<items.length;k++){
+  if(items[k].type!=='extra')continue;
+  let e=k;while(e+1<items.length&&items[e+1].type==='extra')e++;
+  const run=items.slice(k,e+1).flatMap(x=>String(x.spoken).split(/\s+/)).map(key).filter(Boolean),before=[],after=[];
+  for(let m=k-1;m>=0&&before.length<8;m--)if(items[m].expected&&items[m].type!=='missing')before.unshift(key(items[m].expected));
+  for(let m=e+1;m<items.length&&after.length<8;m++)if(items[m].expected)after.push(key(items[m].expected));
+  const slice=list=>{for(let s=0;s+run.length<=list.length;s++)if(run.every((w,i)=>w===list[s+i]))return true;return false;};
+  if(run.length&&(slice(before)||run.every((w,i)=>w===after[i])))for(let m=k;m<=e;m++)items[m].type='repeated';
+  k=e;
+ }
+ return items;
 }
 // Edit distance between two normalised words, giving up (limit+1) as soon as it must exceed the limit.
 function distance(a,b,limit){
