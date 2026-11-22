@@ -6,7 +6,7 @@ const path = require('node:path');
 const root = __dirname, out = path.join(root, 'github-upload');
 const files = ['index.html', 'style.css', 'compare.js', 'learning.js', 'asr.js', 'app.js', 'assistant.js', 'knowledge.js', 'mushaf.js', 'llm.js', 'board.js', 'appboard.js',
   'meet.html', 'meet.css', 'meet.js', 'recordings.html', 'recordings.js', 'sw.js', 'manifest.webmanifest',
-  'server.cjs', 'assistant.cjs', 'meeting.cjs', 'recordings.cjs', 'publish-recordings.cjs', 'tests.cjs', 'build-site.cjs', 'export-repo.cjs', 'Training/app-sources.cjs',
+  'server.cjs', 'assistant.cjs', 'meeting.cjs', 'recordings.cjs', 'publish-recordings.cjs', 'start-recorder.cmd', 'tests.cjs', 'build-site.cjs', 'export-repo.cjs', 'Training/app-sources.cjs',
   'package.json', 'package-lock.json', 'oauth-client.json', 'render.yaml', '.gitignore', 'README.md', 'start.cmd'];
 const folders = ['data', 'icons'];
 

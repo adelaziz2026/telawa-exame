@@ -195,6 +195,28 @@ test('surah recordings: only a signed-in local user saves to the folder, and eve
   }finally{server.close();}
  }finally{delete process.env.RECORDINGS_DIR;fs.rmSync(dir,{recursive:true,force:true});}
 });
+test('surah recordings: the phone gets a device key, sends any common audio file, and only home-network addresses count as local',async()=>{
+ const R=require('./recordings.cjs');
+ for(const a of ['192.168.1.20','::ffff:10.0.0.5','172.20.3.4'])assert.ok(R.HOME_NETWORK.test(a),a);
+ for(const a of ['8.8.8.8','172.32.0.1','::ffff:100.64.0.1'])assert.ok(!R.HOME_NETWORK.test(a),a);
+ const dir=fs.mkdtempSync(require('node:path').join(require('node:os').tmpdir(),'rec-'));process.env.RECORDINGS_DIR=dir;
+ try{
+  fs.writeFileSync(dir+'/.login.json',JSON.stringify({user:'moh',...R.hashPassword('moh')}));
+  const server=require('./server.cjs').createServer();await new Promise(r=>server.listen(0,'127.0.0.1',r));const base='http://127.0.0.1:'+server.address().port,H={'x-recorder':'1'};
+  try{
+   const login=await (await fetch(base+'/api/recordings/login',{method:'POST',headers:{...H,'content-type':'application/json'},body:JSON.stringify({user:'moh',password:'moh',device:true})})).json();
+   assert.match(login.token,/^[a-f0-9]{48}$/);assert.ok(!fs.readFileSync(dir+'/.devices.json','utf8').includes(login.token));
+   const A={...H,authorization:'Bearer '+login.token};
+   const mp3=await fetch(base+'/api/recordings/2',{method:'PUT',headers:{...A,'content-type':'application/octet-stream','x-file-ext':'mp3'},body:Buffer.from('ID3')});assert.equal(mp3.status,200);assert.equal((await mp3.json()).file,'surah-002.mp3');
+   const amr=await fetch(base+'/api/recordings/2',{method:'PUT',headers:{...A,'content-type':'audio/amr'},body:Buffer.from('#!AMR')});assert.equal((await amr.json()).file,'surah-002.amr');assert.equal(fs.existsSync(dir+'/surah-002.mp3'),false);
+   assert.equal((await fetch(base+'/recordings/surah-002.amr')).headers.get('content-type'),'audio/amr');
+   assert.equal((await fetch(base+'/api/recordings/3',{method:'PUT',headers:{...A,'content-type':'application/octet-stream','x-file-ext':'exe'},body:'MZ'})).status,415);
+   assert.equal((await fetch(base+'/api/recordings/3',{method:'PUT',headers:{...H,authorization:'Bearer '+'0'.repeat(48),'content-type':'audio/mpeg'},body:'x'})).status,401);
+   await fetch(base+'/api/recordings/logout',{method:'POST',headers:A});
+   assert.equal((await fetch(base+'/api/recordings/2',{method:'DELETE',headers:A})).status,401);
+  }finally{server.close();}
+ }finally{delete process.env.RECORDINGS_DIR;fs.rmSync(dir,{recursive:true,force:true});}
+});
 test('server compresses the Quran data and revalidates it with ETags',()=>withServer(async request=>{
  const gz=await request('/data/simple.json',{headers:{'accept-encoding':'gzip'}});
  assert.equal(gz.status,200);assert.equal(gz.headers['content-encoding'],'gzip');assert.match(gz.headers['cache-control'],/max-age/);

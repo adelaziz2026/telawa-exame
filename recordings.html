@@ -25,6 +25,24 @@
   </form>
  </section>
 
+ <section id="recPhone" class="card rec-login" hidden>
+  <h2>🎙 دخول المسجِّل من الهاتف</h2>
+  <p class="muted">شغّل <b>start-recorder.cmd</b> على الكمبيوتر، واكتب العنوان الذي يظهر فيه. تُحفظ التسجيلات على الهاتف، وتُرسل إلى الكمبيوتر عندما تكون على شبكة Wi-Fi نفسها.</p>
+  <form id="recPhoneForm">
+   <label>عنوان الكمبيوتر<input id="recAddr" inputmode="url" placeholder="192.168.1.20:8787" dir="ltr" required></label>
+   <label>اسم المستخدم<input id="recPUser" autocomplete="username" required></label>
+   <label>كلمة المرور<span class="rec-pass"><input id="recPPass" type="password" autocomplete="current-password" required><button type="button" id="recPEye" aria-label="إظهار كلمة المرور" title="إظهار كلمة المرور">👁</button></span></label>
+   <button type="submit" class="rec-primary">دخول</button>
+   <small id="recPhoneLoginNote" role="status"></small>
+  </form>
+ </section>
+
+ <section id="recPhoneTools" class="card rec-tools" hidden>
+  <span id="recPhoneUser"></span><span id="recPending"></span>
+  <div><button type="button" id="recSend" class="rec-primary">📤 إرسال إلى الكمبيوتر</button><button type="button" id="recPhonePublish" class="rec-ghost">🌐 نشر على الموقع</button><button type="button" id="recPhoneLogout" class="rec-ghost">خروج</button></div>
+  <small id="recPhoneNote" role="status"></small>
+ </section>
+
  <section id="recTools" class="card rec-tools" hidden>
   <span>✓ أنت مسجّل الدخول. سجّل أي سورة، ثم انشر التسجيلات ليسمعها زوار الموقع.</span>
   <div><button type="button" id="recPublish" class="rec-primary">📤 نشر على الموقع</button><button type="button" id="recLogout" class="rec-ghost">خروج</button></div>
