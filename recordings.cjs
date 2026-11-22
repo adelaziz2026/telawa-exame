@@ -122,7 +122,8 @@ async function handleRecordings(req, res, send, pathname) {
     let audio; try { audio = await readBody(req, MAX_BYTES); } catch (e) { return json(req, res, send, e.status || 400, {error: 'too_large', message: 'التسجيل كبير جدًا.'}); }
     if (!audio.length) return json(req, res, send, 400, {error: 'empty'});
     const file = `surah-${id}.${ext}`; fs.writeFileSync(path.join(folder(), file), audio);
-    index.surahs[surah] = {file, bytes: audio.length, updated: new Date().toISOString()}; writeIndex(index);
+    const seconds = Math.round(Number(req.headers['x-duration']) || 0);
+    index.surahs[surah] = {file, bytes: audio.length, ...(seconds > 0 && seconds < 36000 ? {seconds} : {}), updated: new Date().toISOString()}; writeIndex(index);
     return json(req, res, send, 200, {ok: true, ...index.surahs[surah]});
   }
   if (route === '/publish' && req.method === 'POST') {

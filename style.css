@@ -578,3 +578,22 @@ body.mushaf-active{overflow:hidden}
 .rec-help-body{padding:0 18px 14px;border-top:1px solid var(--line);line-height:1.9}
 .rec-help-body h3{margin:14px 0 4px;font-size:16px;color:var(--primary)}
 .rec-help-body ol,.rec-help-body ul{margin:0;padding-right:22px}.rec-help-body p{margin:0}
+
+.rec-filter select{margin:0;width:auto}
+.rec-filter input[type=search]{padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);font:inherit}
+.rec-play{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.rec-listen{padding:6px 14px}
+.rec-meta{color:var(--muted);flex:1;min-width:120px}
+.rec-download{color:var(--primary);font-weight:700;text-decoration:none;font-size:13px}
+.rec-card.playing{border-color:var(--primary);box-shadow:0 0 0 2px color-mix(in srgb,var(--primary) 25%,transparent)}
+.rec-card.playing .rec-num{background:var(--primary);color:var(--on-primary)}
+.rec-player{position:fixed;inset-inline:0;bottom:0;z-index:50;background:var(--surface);border-top:1px solid var(--line);box-shadow:0 -6px 24px rgba(0,0,0,.12);padding:10px max(16px,env(safe-area-inset-left)) calc(10px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:6px;max-width:980px;margin:0 auto;border-radius:16px 16px 0 0}
+.rec-player[hidden]{display:none}
+.rec-player-top{display:flex;align-items:center;gap:8px}.rec-player-top b{flex:1;color:var(--primary);font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rec-player input[type=range]{width:100%;margin:0;accent-color:var(--primary)}
+.rec-player-controls{display:flex;align-items:center;gap:8px;direction:ltr}.rec-player-controls small{flex:1;color:var(--muted);direction:ltr;text-align:center}
+.rec-player-controls select{margin:0;width:auto;padding:4px 6px}
+.rec-icon{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:50%;width:38px;height:38px;display:grid;place-items:center;cursor:pointer;font-size:15px}
+.rec-big{width:46px;height:46px;background:var(--primary);color:var(--on-primary);border:0;font-size:18px}
+.rec-has-player .rec-page{padding-bottom:150px}
+@media (max-width:520px){.rec-list{grid-template-columns:1fr}.rec-filter{flex-wrap:wrap}.rec-filter input[type=search]{flex-basis:100%}.rec-title h1{font-size:21px}.rec-tools div{flex-wrap:wrap}}

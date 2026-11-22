@@ -19,8 +19,10 @@
   <div class="rec-help-body">
    <h3>🎧 للاستماع</h3>
    <ol>
-    <li>ابحث عن السورة بالاسم أو الرقم، أو اختر «المسجّلة فقط».</li>
-    <li>اضغط ▶ في مشغّل السورة. السور التي لا يظهر لها مشغّل لم تُسجَّل بعد.</li>
+    <li>ابحث عن السورة بالاسم أو الرقم، أو اختر «المسجّلة» من القائمة.</li>
+    <li>اضغط <b>▶ استماع</b> بجانب السورة، أو <b>▶ تشغيل الكل</b> لسماع كل السور المسجّلة بالترتيب.</li>
+    <li>من المشغّل أسفل الصفحة: إيقاف مؤقت، والسورة التالية أو السابقة، وتغيير السرعة. وعلى الهاتف يعمل من شاشة القفل أيضًا.</li>
+    <li>اضغط <b>⬇ تنزيل</b> لحفظ ملف التسجيل على جهازك.</li>
    </ol>
    <h3>💻 التسجيل من الكمبيوتر</h3>
    <ol>
@@ -89,9 +91,22 @@
 
  <div class="rec-filter">
   <input id="recSearch" type="search" placeholder="ابحث باسم السورة أو رقمها" aria-label="ابحث عن سورة">
-  <label class="rec-only"><input type="checkbox" id="recOnly"> المسجّلة فقط</label>
+  <select id="recShow" aria-label="عرض السور"><option value="all">كل السور</option><option value="rec">المسجّلة</option><option value="missing">غير المسجّلة</option></select>
+  <button type="button" id="recPlayAll" class="rec-primary" hidden>▶ تشغيل الكل</button>
  </div>
  <ol id="recList" class="rec-list" aria-label="سور القرآن الكريم"></ol>
 </main>
+<div id="recPlayer" class="rec-player" role="region" aria-label="مشغّل التسجيلات" hidden>
+ <div class="rec-player-top"><b id="recNow" aria-live="polite"></b><button type="button" id="recClose" class="rec-icon" aria-label="إغلاق المشغّل">✕</button></div>
+ <input id="recSeek" type="range" min="0" max="1000" value="0" aria-label="موضع التشغيل">
+ <div class="rec-player-controls">
+  <button type="button" id="recPrev" class="rec-icon" aria-label="السورة السابقة">⏮</button>
+  <button type="button" id="recToggle" class="rec-icon rec-big" aria-label="تشغيل">▶</button>
+  <button type="button" id="recNext" class="rec-icon" aria-label="السورة التالية">⏭</button>
+  <small id="recTime">0:00 / --:--</small>
+  <select id="recSpeed" aria-label="سرعة التشغيل"><option value="0.75">0.75×</option><option value="1" selected>1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option></select>
+ </div>
+ <audio id="recAudio" preload="none"></audio>
+</div>
 <script src="recordings.js"></script>
 </body></html>

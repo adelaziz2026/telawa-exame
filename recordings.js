@@ -13,6 +13,9 @@ const api=(path,opts={})=>fetch('api/recordings'+path,{...opts,headers:{'x-recor
 let surahs=[],index={surahs:{}},webRecorder=false,pending={};
 const norm=t=>String(t).normalize('NFKD').replace(/[ً-ٰٟۖ-ۭـ]/g,'').replace(/[أإآٱ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/^سوره\s*/,'').trim();
 const display=name=>String(name).replace(/[ً-ٰٟۖ-ۭـ]/g,'').replace(/ٱ/g,'ا').replace(/^سورة\s*/,'').trim();
+const clock=t=>{t=Math.max(0,Math.round(t||0));const h=Math.floor(t/3600),m=Math.floor(t%3600/60),s=String(t%60).padStart(2,'0');return h?`${h}:${String(m).padStart(2,'0')}:${s}`:`${m}:${s}`;};
+// The length of an uploaded file, read by the browser; 0 when it cannot tell (some formats such as amr).
+const durationOf=file=>new Promise(done=>{const a=new Audio(),url=URL.createObjectURL(file),end=v=>{URL.revokeObjectURL(url);done(Math.round(v)||0);};a.preload='metadata';a.onloadedmetadata=()=>end(isFinite(a.duration)?a.duration:0);a.onerror=()=>end(0);setTimeout(()=>end(0),5000);a.src=url;});
 const extOf=(name,type)=>{const e=String(name||'').toLowerCase().split('.').pop();if(EXTS.includes(e))return e;return {'audio/webm':'webm','audio/ogg':'ogg','audio/mp4':'m4a','audio/mpeg':'mp3','audio/wav':'wav','audio/aac':'aac'}[String(type).split(';')[0]]||'';};
 
 // ---------- Phone: login, the waiting list, and sending to the computer ----------
@@ -56,7 +59,7 @@ async function sendPending(){
  let sent=0;
  for(const item of items){
   note.textContent=`جارٍ إرسال سورة ${surahs[item.surah-1]?.name||item.surah}…`;
-  let r;try{r=await nativeRequest('PUT',pc('/'+item.surah),{headers:{'Content-Type':item.type||'application/octet-stream','x-file-ext':item.ext,Authorization:'Bearer '+p.token},data:await base64(item.blob),dataType:'file'});}
+  let r;try{r=await nativeRequest('PUT',pc('/'+item.surah),{headers:{'Content-Type':item.type||'application/octet-stream','x-file-ext':item.ext,'x-duration':String(item.seconds||''),Authorization:'Bearer '+p.token},data:await base64(item.blob),dataType:'file'});}
   catch{note.textContent=`أُرسل ${sent}. الكمبيوتر غير متاح الآن، وسيبقى الباقي على الهاتف.`;render();return;}
   if(r.status===401){setPhone({addr:p.addr,user:''});note.textContent='انتهت صلاحية الدخول. سجّل الدخول مرة أخرى.';showPhone();return;}
   if(r.status!==200){note.textContent=r.data.message||'رفض الكمبيوتر أحد الملفات.';render();return;}
@@ -95,8 +98,9 @@ function progress(){
 }
 function render(){
  progress();showPhone();
- const q=norm($('recSearch').value||''),only=$('recOnly').checked,list=$('recList');
- list.replaceChildren(...surahs.filter(s=>(!q||String(s.number)===q||s.key.includes(q))&&(!only||index.surahs[s.number]||pending[s.number])).map(card));
+ const q=norm($('recSearch').value||''),show=$('recShow').value,list=$('recList'),has=s=>!!(index.surahs[s.number]||pending[s.number]);
+ list.replaceChildren(...surahs.filter(s=>(!q||String(s.number)===q||s.key.includes(q))&&(show==='all'||(show==='rec')===has(s))).map(card));
+ markPlaying();$('recPlayAll').hidden=!playable().length;
  if(!list.children.length)list.append(Object.assign(document.createElement('li'),{className:'rec-empty',textContent:'لا توجد سورة مطابقة.'}));
 }
 function card(s){
@@ -104,28 +108,29 @@ function card(s){
  const rec=index.surahs[s.number],wait=pending[s.number];
  const state=wait?'⏳ على الهاتف':rec?'🎧 مسجّلة':'—';
  li.innerHTML=`<div class="rec-card-head"><span class="rec-num">${s.number}</span><div><b>سورة ${s.name}</b><small>${s.place} · ${s.ayat} ${s.ayat>=3&&s.ayat<=10?'آيات':'آية'}</small></div><span class="rec-state">${state}</span></div>`;
- if(rec){
-  const audio=Object.assign(document.createElement('audio'),{controls:true,preload:'none',src:BASE+rec.file+'?v='+encodeURIComponent(rec.updated||'')});
-  audio.setAttribute('aria-label','تسجيل سورة '+s.name);li.append(audio);
- }
- if(wait){
-  const audio=Object.assign(document.createElement('audio'),{controls:true,src:URL.createObjectURL(wait.blob)});
-  audio.setAttribute('aria-label','التسجيل المحفوظ على الهاتف');li.append(Object.assign(document.createElement('small'),{className:'rec-note',textContent:'محفوظ على الهاتف، ويُرسل إلى الكمبيوتر عند الاتصال بشبكته.'}),audio);
+ if(rec||wait){
+  const row=document.createElement('div');row.className='rec-play';
+  const play=Object.assign(document.createElement('button'),{type:'button',className:'rec-primary rec-listen',textContent:'▶ استماع'});play.onclick=()=>playSurah(s.number);
+  const seconds=(wait||rec).seconds,info=[seconds?'⏱ '+clock(seconds):'',wait?'على الهاتف':rec.updated?'🗓 '+new Date(rec.updated).toLocaleDateString('ar-EG',{day:'numeric',month:'long',year:'numeric'}):''].filter(Boolean).join(' · ');
+  row.append(play,Object.assign(document.createElement('small'),{className:'rec-meta',textContent:info}));
+  if(rec&&!wait&&!native)row.append(Object.assign(document.createElement('a'),{className:'rec-download',href:BASE+rec.file,download:`سورة ${s.name}.${rec.file.split('.').pop()}`,textContent:'⬇ تنزيل'}));
+  li.append(row);
+  if(wait)li.append(Object.assign(document.createElement('small'),{className:'rec-note',textContent:'محفوظ على الهاتف، ويُرسل إلى الكمبيوتر عند الاتصال بشبكته.'}));
  }
  if(canRecord())li.append(recorderFor(s,!!rec||!!wait));
  return li;
 }
 // Saves a take or a chosen file: straight into Taskeeeel on the computer, or onto the phone's waiting list.
-async function saveAudio(s,blob,ext,note){
+async function saveAudio(s,blob,ext,note,seconds=0){
  if(blob.size>MAX){note.textContent='الملف أكبر من 95 ميجابايت.';return false;}
  if(native){
-  await keep({surah:s.number,blob,type:blob.type||'application/octet-stream',ext,saved:Date.now()});
+  await keep({surah:s.number,blob,type:blob.type||'application/octet-stream',ext,seconds,saved:Date.now()});
   $('s'+s.number).replaceWith(card(s));showPhone();
   if(phone()?.token)sendPending();
   return true;
  }
  note.textContent='جارٍ الحفظ في Taskeeeel…';
- const r=await api('/'+s.number,{method:'PUT',headers:{'content-type':blob.type||'application/octet-stream','x-file-ext':ext},body:blob}).catch(()=>null),data=r?await r.json().catch(()=>({})):{};
+ const r=await api('/'+s.number,{method:'PUT',headers:{'content-type':blob.type||'application/octet-stream','x-file-ext':ext,'x-duration':String(seconds||'')},body:blob}).catch(()=>null),data=r?await r.json().catch(()=>({})):{};
  if(!r?.ok){note.textContent=data.message||'تعذّر الحفظ.';return false;}
  index.surahs[s.number]=data;
  const fresh=card(s);fresh.querySelector('.rec-actions .rec-note').textContent='✓ حُفظ على الكمبيوتر. اضغط «نشر على الموقع» ليسمعه الزوار.';
@@ -141,7 +146,7 @@ function recorderFor(s,has){
  const note=Object.assign(document.createElement('small'),{className:'rec-note'});note.setAttribute('role','status');
  const take=Object.assign(document.createElement('audio'),{controls:true});take.hidden=true;
  stop.hidden=save.hidden=drop.hidden=true;del.hidden=!has;
- let recorder,chunks=[],blob=null,timer=0,began=0;
+ let recorder,chunks=[],blob=null,timer=0,began=0,seconds=0;
  const reset=()=>{start.hidden=upload.hidden=false;stop.hidden=save.hidden=drop.hidden=true;take.hidden=true;blob=null;clearInterval(timer);active=null;};
  start.onclick=async()=>{
   if(active){note.textContent='أوقف التسجيل الجاري أولًا.';return;}
@@ -149,19 +154,20 @@ function recorderFor(s,has){
   const type=['audio/webm;codecs=opus','audio/ogg;codecs=opus','audio/mp4'].find(t=>globalThis.MediaRecorder?.isTypeSupported?.(t));
   recorder=new MediaRecorder(stream,{...(type?{mimeType:type}:{}),audioBitsPerSecond:64000});chunks=[];active=recorder;
   recorder.ondataavailable=e=>e.data.size&&chunks.push(e.data);
-  recorder.onstop=()=>{stream.getTracks().forEach(t=>t.stop());clearInterval(timer);blob=new Blob(chunks,{type:(recorder.mimeType||'audio/webm').split(';')[0]});take.src=URL.createObjectURL(blob);take.hidden=false;save.hidden=drop.hidden=false;stop.hidden=true;note.textContent='استمع للتسجيل، ثم احفظه أو ألغه.';};
+  recorder.onstop=()=>{stream.getTracks().forEach(t=>t.stop());clearInterval(timer);seconds=Math.round((Date.now()-began)/1000);blob=new Blob(chunks,{type:(recorder.mimeType||'audio/webm').split(';')[0]});take.src=URL.createObjectURL(blob);take.hidden=false;save.hidden=drop.hidden=false;stop.hidden=true;note.textContent='استمع للتسجيل، ثم احفظه أو ألغه.';};
   recorder.start(1000);began=Date.now();start.hidden=upload.hidden=true;stop.hidden=false;del.hidden=true;
   timer=setInterval(()=>{const t=Math.floor((Date.now()-began)/1000);note.textContent=`🔴 جارٍ التسجيل ${Math.floor(t/60)}:${String(t%60).padStart(2,'0')}`;},500);
  };
  stop.onclick=()=>recorder?.state==='recording'&&recorder.stop();
  drop.onclick=()=>{reset();del.hidden=!has;note.textContent='';};
- save.onclick=async()=>{if(!blob)return;save.disabled=true;const ok=await saveAudio(s,blob,extOf('',blob.type)||'webm',note);save.disabled=false;if(ok)active=null;};
+ save.onclick=async()=>{if(!blob)return;save.disabled=true;const ok=await saveAudio(s,blob,extOf('',blob.type)||'webm',note,seconds);save.disabled=false;if(ok)active=null;};
  upload.onclick=()=>picker.click();
  picker.onchange=async()=>{
   const file=picker.files?.[0];picker.value='';if(!file)return;
   const ext=extOf(file.name,file.type);
   if(!ext&&!String(file.type).startsWith('audio/')){note.textContent='اختر ملفًا صوتيًا (mp3 أو m4a أو wav أو غيرها).';return;}
-  await saveAudio(s,file,ext||'m4a',note);
+  note.textContent='جارٍ تجهيز الملف…';
+  await saveAudio(s,file,ext||'m4a',note,await durationOf(file));
  };
  del.onclick=async()=>{
   if(native&&pending[s.number]){await forget(s.number);$('s'+s.number).replaceWith(card(s));showPhone();return;}
@@ -176,7 +182,44 @@ function recorderFor(s,has){
 }
 
 // ---------- Controls ----------
-$('recSearch').oninput=render;$('recOnly').onchange=render;
+$('recSearch').oninput=render;$('recShow').onchange=render;
+// ---------- Shared player: one surah, or all recorded surahs in order, with speed and lock-screen controls ----------
+const player=$('recAudio');let currentSurah=0,playAll=false,localUrls={};
+const SPEED_KEY='tarteel:recSpeed';
+function playable(){return surahs.filter(s=>pending[s.number]||index.surahs[s.number]).map(s=>s.number);}
+function sourceOf(n){
+ if(pending[n])return localUrls[n]??=URL.createObjectURL(pending[n].blob);
+ const rec=index.surahs[n];return rec?BASE+rec.file+'?v='+encodeURIComponent(rec.updated||''):'';
+}
+function markPlaying(){
+ for(const el of document.querySelectorAll('.rec-card.playing'))el.classList.remove('playing');
+ if(currentSurah)$('s'+currentSurah)?.classList.add('playing');
+}
+function playSurah(n,all=false){
+ const src=sourceOf(n);if(!src)return;
+ playAll=all;currentSurah=n;player.src=src;player.playbackRate=+$('recSpeed').value||1;player.play().catch(()=>{});
+ const name='سورة '+(surahs[n-1]?.name||n);
+ $('recPlayer').hidden=false;$('recNow').textContent=(all?'▶ تشغيل الكل: ':'')+name;document.body.classList.add('rec-has-player');
+ markPlaying();$('s'+n)?.scrollIntoView({block:'nearest',behavior:'smooth'});
+ if('mediaSession'in navigator){try{navigator.mediaSession.metadata=new MediaMetadata({title:name,artist:'اختبار التلاوة',artwork:[{src:'icons/icon-512.png',sizes:'512x512',type:'image/png'}]});}catch{}}
+}
+function step(dir){
+ const list=playable(),i=list.indexOf(currentSurah),next=list[i+dir];
+ if(next)playSurah(next,playAll);else if(dir>0){playAll=false;$('recNow').textContent+=' — انتهت القائمة';}
+}
+player.onended=()=>{if(playAll)step(1);};
+player.onplay=()=>{$('recToggle').textContent='⏸';$('recToggle').setAttribute('aria-label','إيقاف مؤقت');};
+player.onpause=()=>{$('recToggle').textContent='▶';$('recToggle').setAttribute('aria-label','تشغيل');};
+player.ontimeupdate=()=>{const d=player.duration;$('recSeek').value=d?String(player.currentTime/d*1000):'0';$('recTime').textContent=`${clock(player.currentTime)} / ${d&&isFinite(d)?clock(d):'--:--'}`;};
+player.onerror=()=>{$('recNow').textContent='تعذّر تشغيل هذا الملف في هذا المتصفح. جرّب تنزيله.';};
+$('recSeek').oninput=()=>{const d=player.duration;if(d&&isFinite(d))player.currentTime=$('recSeek').value/1000*d;};
+$('recToggle').onclick=()=>player.paused?player.play().catch(()=>{}):player.pause();
+$('recPrev').onclick=()=>step(-1);$('recNext').onclick=()=>step(1);
+$('recClose').onclick=()=>{player.pause();$('recPlayer').hidden=true;document.body.classList.remove('rec-has-player');currentSurah=0;markPlaying();};
+$('recPlayAll').onclick=()=>{const list=playable();if(list.length)playSurah(list[0],true);};
+try{const sp=localStorage.getItem(SPEED_KEY);if(sp)$('recSpeed').value=sp;}catch{}
+$('recSpeed').onchange=()=>{player.playbackRate=+$('recSpeed').value;try{localStorage.setItem(SPEED_KEY,$('recSpeed').value);}catch{}};
+if('mediaSession'in navigator){for(const [a,f] of [['play',()=>player.play()],['pause',()=>player.pause()],['nexttrack',()=>step(1)],['previoustrack',()=>step(-1)]])try{navigator.mediaSession.setActionHandler(a,f);}catch{}}
 for(const [eye,input] of [['recEye','recPass'],['recPEye','recPPass']])$(eye).onclick=()=>{const p=$(input),show=p.type==='password';p.type=show?'text':'password';$(eye).setAttribute('aria-label',show?'إخفاء كلمة المرور':'إظهار كلمة المرور');};
 $('recLoginForm').onsubmit=async e=>{
  e.preventDefault();$('recLoginNote').textContent='جارٍ الدخول…';

@@ -208,7 +208,7 @@ test('surah recordings: the phone gets a device key, sends any common audio file
    assert.match(login.token,/^[a-f0-9]{48}$/);assert.ok(!fs.readFileSync(dir+'/.devices.json','utf8').includes(login.token));
    const A={...H,authorization:'Bearer '+login.token};
    const mp3=await fetch(base+'/api/recordings/2',{method:'PUT',headers:{...A,'content-type':'application/octet-stream','x-file-ext':'mp3'},body:Buffer.from('ID3')});assert.equal(mp3.status,200);assert.equal((await mp3.json()).file,'surah-002.mp3');
-   const amr=await fetch(base+'/api/recordings/2',{method:'PUT',headers:{...A,'content-type':'audio/amr'},body:Buffer.from('#!AMR')});assert.equal((await amr.json()).file,'surah-002.amr');assert.equal(fs.existsSync(dir+'/surah-002.mp3'),false);
+   const amr=await fetch(base+'/api/recordings/2',{method:'PUT',headers:{...A,'content-type':'audio/amr','x-duration':'125.4'},body:Buffer.from('#!AMR')});const amrSaved=await amr.json();assert.equal(amrSaved.file,'surah-002.amr');assert.equal(amrSaved.seconds,125);assert.equal(fs.existsSync(dir+'/surah-002.mp3'),false);
    assert.equal((await fetch(base+'/recordings/surah-002.amr')).headers.get('content-type'),'audio/amr');
    assert.equal((await fetch(base+'/api/recordings/3',{method:'PUT',headers:{...A,'content-type':'application/octet-stream','x-file-ext':'exe'},body:'MZ'})).status,415);
    assert.equal((await fetch(base+'/api/recordings/3',{method:'PUT',headers:{...H,authorization:'Bearer '+'0'.repeat(48),'content-type':'audio/mpeg'},body:'x'})).status,401);
