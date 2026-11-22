@@ -544,3 +544,32 @@ body.mushaf-active{overflow:hidden}
 #llmStatus,#claudeStatus{font-size:11px;line-height:1.45;color:var(--gold-ink)}
 #llmStatus:empty,#claudeStatus:empty{display:none}
 .ai-llm-tag{display:block;margin-top:6px;font-size:11px;color:var(--muted)}
+
+/* Surah recordings page */
+.rec-link{display:block;margin-top:10px;text-decoration:none;color:var(--ink)}
+.rec-btn{text-decoration:none}
+.rec-body{background:var(--bg);margin:0}
+.rec-page{max-width:980px;margin:0 auto;padding:20px 16px 48px}
+.rec-head{display:flex;flex-direction:column;gap:12px;margin-bottom:16px}
+.rec-head .back{color:var(--primary);text-decoration:none;font-weight:700;width:max-content}
+.rec-title{display:flex;align-items:center;gap:12px}.rec-title h1{margin:0;font-size:24px;color:var(--primary)}.rec-title p{margin:2px 0 0}
+.rec-progress{display:flex;align-items:center;gap:10px}.rec-progress small{white-space:nowrap;color:var(--muted)}
+.rec-bar{flex:1;height:8px;border-radius:99px;background:var(--soft);overflow:hidden}.rec-bar span{display:block;height:100%;width:0;background:var(--primary);transition:width .4s}
+.rec-login{max-width:380px;margin:0 auto 18px;padding:22px;text-align:center}.rec-login h2{margin:0 0 6px;color:var(--primary)}
+.rec-login form{display:flex;flex-direction:column;gap:10px;text-align:right}.rec-login label{display:flex;flex-direction:column;gap:4px;font-weight:600}
+.rec-pass{display:flex;gap:6px}.rec-pass input{flex:1}.rec-pass button{border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:0 10px}
+.rec-primary{padding:8px 14px;border:0;border-radius:12px;background:var(--primary);color:var(--on-primary);font-weight:700;cursor:pointer}
+.rec-primary:hover{background:var(--primary-hover)}.rec-primary:disabled{opacity:.6}
+.rec-ghost{padding:8px 12px;border:1px solid var(--line);border-radius:12px;background:transparent;color:var(--ink);cursor:pointer}
+.rec-stop{padding:8px 14px;border:0;border-radius:12px;background:#b42318;color:#fff;font-weight:700;cursor:pointer}
+.rec-tools{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;margin-bottom:16px}.rec-tools div{display:flex;gap:8px}
+.rec-tools small{flex-basis:100%;color:var(--gold-ink)}
+.rec-filter{display:flex;gap:10px;align-items:center;margin-bottom:12px}.rec-filter input[type=search]{flex:1;margin:0}.rec-only{white-space:nowrap;color:var(--muted)}
+.rec-list{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.rec-card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:12px;display:flex;flex-direction:column;gap:10px}
+.rec-card-head{display:flex;align-items:center;gap:10px}.rec-card-head div{flex:1;display:flex;flex-direction:column}.rec-card-head small{color:var(--muted)}
+.rec-num{flex:none;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:var(--soft);color:var(--primary);font-weight:700}
+.rec-state{font-size:12px;color:var(--muted);white-space:nowrap}
+.rec-card audio{width:100%}
+.rec-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.rec-actions audio{flex-basis:100%}.rec-note{flex-basis:100%;color:var(--gold-ink);font-size:12px}
+.rec-empty{color:var(--muted);padding:20px;text-align:center}

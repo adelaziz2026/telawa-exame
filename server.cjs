@@ -4,13 +4,14 @@ const path = require('node:path');
 const zlib = require('node:zlib');
 const {handleAssistant} = require('./assistant.cjs');
 const {handleMeeting} = require('./meeting.cjs');
+const {handleRecordings} = require('./recordings.cjs');
 const root = __dirname;
 const port = Number(process.env.PORT) || 8787;
 const host = process.env.HOST || '127.0.0.1';
 const types = {'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.webmanifest':'application/manifest+json; charset=utf-8','.png':'image/png','.svg':'image/svg+xml'};
 const compressible = new Set(['.html','.js','.css','.json','.webmanifest','.svg']);
 // Folders that live next to the app but must never be served (tooling, mobile builds, dependencies).
-const hidden = new Set(['node_modules','Mobile','data-src','site','github-upload','github-update','Training','quran-llm','Space','Document']);
+const hidden = new Set(['node_modules','Mobile','data-src','site','github-upload','github-update','Training','quran-llm','Space','Document','Taskeeeel']);
 // The on-device model needs transformers.js from jsdelivr (WASM, blob workers) and downloads weights from
 // huggingface.co, which redirects to other hosts; recitation audio and Quran APIs are also remote.
 const csp = ["default-src 'self'","script-src 'self' https://cdn.jsdelivr.net 'wasm-unsafe-eval' blob:","worker-src 'self' blob:","connect-src 'self' https:","media-src 'self' https: blob:","img-src 'self' data: blob:","style-src 'self' https://fonts.googleapis.com","font-src https://fonts.gstatic.com","manifest-src 'self'","object-src 'none'","base-uri 'self'","form-action 'none'","frame-ancestors 'none'"].join('; ');
@@ -51,6 +52,8 @@ function handle(req, res) {
   if (pathname === '/api/assistant') return handleAssistant(req, res, send);
   // Meeting rooms: joining, the live event stream and relayed messages.
   if (pathname.startsWith('/api/meet/')) return handleMeeting(req, res, send, pathname);
+  // Surah recordings: listening for everyone; recording and publishing only from this computer.
+  if (pathname.startsWith('/api/recordings/') || pathname.startsWith('/recordings/')) return handleRecordings(req, res, send, pathname);
   if (req.method !== 'GET' && req.method !== 'HEAD') return send(req, res, 405, {'Allow':'GET, HEAD','Content-Type':'text/plain; charset=utf-8'}, 'Method not allowed');
   if (pathname === '/api/health') return send(req, res, 200, {'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'}, JSON.stringify({status:'ok', uptime:Math.round((Date.now() - started) / 1000)}));
   if (pathname === '/') pathname = '/index.html';

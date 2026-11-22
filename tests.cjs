@@ -167,6 +167,34 @@ async function withServer(fn){
  const request=(path,{method='GET',headers={}}={})=>new Promise((resolve,reject)=>{const req=http.request({host:'127.0.0.1',port:server.address().port,path,method,headers},res=>{const chunks=[];res.on('data',c=>chunks.push(c));res.on('end',()=>resolve({status:res.statusCode,headers:res.headers,body:Buffer.concat(chunks)}));});req.on('error',reject);req.end();});
  try{await fn(request);}finally{server.close();}
 }
+test('surah recordings: only a signed-in local user saves to the folder, and everyone can listen',async()=>{
+ const dir=fs.mkdtempSync(require('node:path').join(require('node:os').tmpdir(),'rec-'));process.env.RECORDINGS_DIR=dir;
+ try{
+  const R=require('./recordings.cjs');fs.writeFileSync(dir+'/.login.json',JSON.stringify({user:'moh',...R.hashPassword('moh')}));
+  const server=require('./server.cjs').createServer();await new Promise(r=>server.listen(0,'127.0.0.1',r));const base='http://127.0.0.1:'+server.address().port;
+  try{
+   const H={'x-recorder':'1'};
+   assert.deepEqual(await (await fetch(base+'/api/recordings/status')).json(),{local:true,signedIn:false,ready:true});
+   assert.equal((await fetch(base+'/api/recordings/1',{method:'PUT',headers:{...H,'content-type':'audio/webm'},body:'x'})).status,401);
+   assert.equal((await fetch(base+'/api/recordings/login',{method:'POST',headers:{...H,'content-type':'application/json'},body:JSON.stringify({user:'moh',password:'no'})})).status,401);
+   assert.equal((await fetch(base+'/api/recordings/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({user:'moh',password:'moh'})})).status,403);
+   const ok=await fetch(base+'/api/recordings/login',{method:'POST',headers:{...H,'content-type':'application/json'},body:JSON.stringify({user:'moh',password:'moh'})});
+   assert.equal(ok.status,200);const cookie=ok.headers.get('set-cookie').split(';')[0];assert.match(ok.headers.get('set-cookie'),/HttpOnly/);
+   const A={...H,cookie};
+   assert.equal((await fetch(base+'/api/recordings/0',{method:'PUT',headers:{...A,'content-type':'audio/webm'},body:'x'})).status,400);
+   assert.equal((await fetch(base+'/api/recordings/115',{method:'PUT',headers:{...A,'content-type':'audio/webm'},body:'x'})).status,400);
+   assert.equal((await fetch(base+'/api/recordings/1',{method:'PUT',headers:{...A,'content-type':'text/html'},body:'x'})).status,415);
+   const audio=Buffer.from('fake-opus-audio-bytes');
+   const saved=await fetch(base+'/api/recordings/18',{method:'PUT',headers:{...A,'content-type':'audio/webm'},body:audio});assert.equal(saved.status,200);
+   assert.deepEqual(fs.readFileSync(dir+'/surah-018.webm'),audio);
+   const index=await (await fetch(base+'/recordings/index.json')).json();assert.equal(index.surahs['18'].file,'surah-018.webm');
+   const part=await fetch(base+'/recordings/surah-018.webm',{headers:{range:'bytes=0-3'}});assert.equal(part.status,206);assert.equal(await part.text(),'fake');
+   assert.equal((await fetch(base+'/recordings/.login.json')).status,404);assert.equal((await fetch(base+'/recordings/../server.cjs')).status,404);assert.equal((await fetch(base+'/Taskeeeel/.login.json')).status,404);
+   assert.equal((await fetch(base+'/api/recordings/18',{method:'DELETE',headers:A})).status,200);assert.equal(fs.existsSync(dir+'/surah-018.webm'),false);
+   await fetch(base+'/api/recordings/logout',{method:'POST',headers:A});assert.equal((await fetch(base+'/api/recordings/2',{method:'DELETE',headers:A})).status,401);
+  }finally{server.close();}
+ }finally{delete process.env.RECORDINGS_DIR;fs.rmSync(dir,{recursive:true,force:true});}
+});
 test('server compresses the Quran data and revalidates it with ETags',()=>withServer(async request=>{
  const gz=await request('/data/simple.json',{headers:{'accept-encoding':'gzip'}});
  assert.equal(gz.status,200);assert.equal(gz.headers['content-encoding'],'gzip');assert.match(gz.headers['cache-control'],/max-age/);

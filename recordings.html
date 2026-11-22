@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>تسجيلات السور | اختبار التلاوة</title>
+<meta name="description" content="استمع إلى تسجيلات سور القرآن الكريم في تطبيق اختبار التلاوة.">
+<link rel="icon" href="icons/icon-192.png"><link rel="manifest" href="manifest.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;600;700&family=Amiri+Quran&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="rec-body">
+<main class="rec-page">
+ <header class="rec-head">
+  <a class="back" href="./">→ العودة إلى التطبيق</a>
+  <div class="rec-title"><img src="icons/logo.svg" alt="" width="44" height="44"><div><h1>تسجيلات السور</h1><p class="muted">اختر سورة واستمع إلى تسجيلها.</p></div></div>
+  <div class="rec-progress" aria-live="polite"><div class="rec-bar"><span id="recFill"></span></div><small id="recCount">جارٍ التحميل…</small></div>
+ </header>
+
+ <section id="recLogin" class="card rec-login" hidden>
+  <h2>🎙 دخول المسجِّل</h2>
+  <p class="muted">التسجيل متاح لصاحب الحساب من هذا الكمبيوتر فقط، والزوار يستمعون.</p>
+  <form id="recLoginForm">
+   <label>اسم المستخدم<input id="recUser" autocomplete="username" required></label>
+   <label>كلمة المرور<span class="rec-pass"><input id="recPass" type="password" autocomplete="current-password" required><button type="button" id="recEye" aria-label="إظهار كلمة المرور" title="إظهار كلمة المرور">👁</button></span></label>
+   <button type="submit" class="rec-primary">دخول</button>
+   <small id="recLoginNote" role="status"></small>
+  </form>
+ </section>
+
+ <section id="recTools" class="card rec-tools" hidden>
+  <span>✓ أنت مسجّل الدخول. سجّل أي سورة، ثم انشر التسجيلات ليسمعها زوار الموقع.</span>
+  <div><button type="button" id="recPublish" class="rec-primary">📤 نشر على الموقع</button><button type="button" id="recLogout" class="rec-ghost">خروج</button></div>
+  <small id="recToolsNote" role="status"></small>
+ </section>
+
+ <div class="rec-filter">
+  <input id="recSearch" type="search" placeholder="ابحث باسم السورة أو رقمها" aria-label="ابحث عن سورة">
+  <label class="rec-only"><input type="checkbox" id="recOnly"> المسجّلة فقط</label>
+ </div>
+ <ol id="recList" class="rec-list" aria-label="سور القرآن الكريم"></ol>
+</main>
+<script src="recordings.js"></script>
+</body></html>

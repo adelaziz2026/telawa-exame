@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const root = __dirname, out = path.join(root, 'site');
 const files = ['index.html', 'style.css', 'compare.js', 'learning.js', 'asr.js', 'app.js', 'assistant.js', 'knowledge.js', 'mushaf.js', 'llm.js', 'board.js', 'appboard.js',
-  'meet.html', 'meet.css', 'meet.js', 'sw.js', 'manifest.webmanifest'];
+  'meet.html', 'meet.css', 'meet.js', 'recordings.html', 'recordings.js', 'sw.js', 'manifest.webmanifest'];
 const folders = ['data', 'icons'];
 
 fs.rmSync(out, {recursive: true, force: true});
