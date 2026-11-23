@@ -10,7 +10,7 @@ const ACCEPT='audio/*,.mp3,.m4a,.mp4,.aac,.wav,.ogg,.opus,.webm,.flac,.amr,.3gp'
 const EXTS=['webm','ogg','opus','m4a','mp4','aac','mp3','wav','flac','amr','3gp'];
 const MAX=95*1024*1024;
 const api=(path,opts={})=>fetch('api/recordings'+path,{...opts,headers:{'x-recorder':'1',...(opts.headers||{})},credentials:'same-origin'});
-let surahs=[],index={surahs:{}},webRecorder=false,pending={};
+let surahs=[],index={surahs:{}},webRecorder=false,pending={},mode={},needCode=false;
 const norm=t=>String(t).normalize('NFKD').replace(/[ً-ٰٟۖ-ۭـ]/g,'').replace(/[أإآٱ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/^سوره\s*/,'').trim();
 const display=name=>String(name).replace(/[ً-ٰٟۖ-ۭـ]/g,'').replace(/ٱ/g,'ا').replace(/^سورة\s*/,'').trim();
 const clock=t=>{t=Math.max(0,Math.round(t||0));const h=Math.floor(t/3600),m=Math.floor(t%3600/60),s=String(t%60).padStart(2,'0');return h?`${h}:${String(m).padStart(2,'0')}:${s}`:`${m}:${s}`;};
@@ -85,12 +85,16 @@ async function load(){
  ]);
  surahs=(quran.data?.surahs||quran).map(s=>({number:s.number,name:display(s.name),key:norm(s.name),ayat:s.ayahs.length,place:s.revelationType==='Meccan'?'مكية':'مدنية'}));
  index=list&&typeof list.surahs==='object'?list:{surahs:{}};
- webRecorder=!!status?.signedIn;
- $('recLogin').hidden=!(status?.local&&!status.signedIn);
+ webRecorder=!!status?.signedIn;mode=status||{};
+ // Signing in is offered on the computer, on its address from a phone browser on the home Wi-Fi, and on the online server.
+ const can=!!(status?.local||status?.online);needCode=!!status?.code;
+ $('recLogin').hidden=!(can&&!status.signedIn);$('recCodeRow').hidden=!needCode;$('recWebCode').required=needCode;
+ $('recLoginIntro').textContent=status?.online?'سجّل الدخول لتسجّل من هنا. كل تسجيل تحفظه يُنشر على الموقع مباشرة.':needCode?'أنت تفتح الكمبيوتر من الهاتف. اكتب رمز الاقتران وبيانات الحساب.':'التسجيل متاح لصاحب الحساب فقط، والزوار يستمعون.';
  // On the public site there is nowhere to save recordings, so say where the record and upload buttons are.
- $('recPublic').hidden=native||!!status?.local;
- $('recTools').hidden=!webRecorder;
- if(status?.local&&!status.ready)$('recLoginNote').textContent='لم يُضبط حساب التسجيل بعد على هذا الكمبيوتر.';
+ $('recPublic').hidden=native||can;
+ $('recTools').hidden=!webRecorder;$('recPublish').hidden=!!status?.online;
+ $('recToolsText').textContent=status?.online?'✓ أنت مسجّل الدخول. كل تسجيل تحفظه يُنشر على الموقع مباشرة، ويُنسخ إلى الكمبيوتر عند الضغط على «نشر» هناك.':'✓ أنت مسجّل الدخول. سجّل أي سورة، ثم انشر التسجيلات ليسمعها زوار الموقع.';
+ if(can&&!status.ready)$('recLoginNote').textContent=status.online?'لم يُضبط حساب التسجيل على الموقع بعد.':'لم يُضبط حساب التسجيل بعد على هذا الكمبيوتر.';
  await loadPending();showPhone();render();
 }
 function progress(){
@@ -124,18 +128,19 @@ function card(s){
 }
 // Saves a take or a chosen file: straight into Taskeeeel on the computer, or onto the phone's waiting list.
 async function saveAudio(s,blob,ext,note,seconds=0){
- if(blob.size>MAX){note.textContent='الملف أكبر من 95 ميجابايت.';return false;}
+ const max=!native&&mode.max||MAX;
+ if(blob.size>max){note.textContent=`الملف أكبر من ${Math.round(max/1048576)} ميجابايت.`;return false;}
  if(native){
   await keep({surah:s.number,blob,type:blob.type||'application/octet-stream',ext,seconds,saved:Date.now()});
   $('s'+s.number).replaceWith(card(s));showPhone();
   if(phone()?.token)sendPending();
   return true;
  }
- note.textContent='جارٍ الحفظ في Taskeeeel…';
+ note.textContent=mode.online?'جارٍ الرفع إلى الموقع…':'جارٍ الحفظ في Taskeeeel…';
  const r=await api('/'+s.number,{method:'PUT',headers:{'content-type':blob.type||'application/octet-stream','x-file-ext':ext,'x-duration':String(seconds||'')},body:blob}).catch(()=>null),data=r?await r.json().catch(()=>({})):{};
  if(!r?.ok){note.textContent=data.message||'تعذّر الحفظ.';return false;}
  index.surahs[s.number]=data;
- const fresh=card(s);fresh.querySelector('.rec-actions .rec-note').textContent='✓ حُفظ على الكمبيوتر. اضغط «نشر على الموقع» ليسمعه الزوار.';
+ const fresh=card(s);fresh.querySelector('.rec-actions .rec-note').textContent=mode.online?'✓ نُشر على الموقع، ويسمعه الزوار الآن.':'✓ حُفظ على الكمبيوتر. اضغط «نشر على الموقع» ليسمعه الزوار.';
  $('s'+s.number).replaceWith(fresh);progress();return true;
 }
 // One recorder at a time: record, listen to the take, then save it or discard it. Or upload an audio file instead.
@@ -148,8 +153,11 @@ function recorderFor(s,has){
  const note=Object.assign(document.createElement('small'),{className:'rec-note'});note.setAttribute('role','status');
  const take=Object.assign(document.createElement('audio'),{controls:true});take.hidden=true;
  stop.hidden=save.hidden=drop.hidden=true;del.hidden=!has;
+ // Browsers allow the microphone only on secure pages; the computer's plain home-network address is not one.
+ const noMic=!native&&!globalThis.isSecureContext;
+ if(noMic){start.hidden=true;note.textContent='سجّل بتطبيق المسجّل في هاتفك، ثم اضغط «رفع ملف».';}
  let recorder,chunks=[],blob=null,timer=0,began=0,seconds=0;
- const reset=()=>{start.hidden=upload.hidden=false;stop.hidden=save.hidden=drop.hidden=true;take.hidden=true;blob=null;clearInterval(timer);active=null;};
+ const reset=()=>{start.hidden=noMic;upload.hidden=false;stop.hidden=save.hidden=drop.hidden=true;take.hidden=true;blob=null;clearInterval(timer);active=null;};
  start.onclick=async()=>{
   if(active){note.textContent='أوقف التسجيل الجاري أولًا.';return;}
   let stream;try{stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});}catch{note.textContent='لم يُسمح باستخدام الميكروفون.';return;}
@@ -174,10 +182,10 @@ function recorderFor(s,has){
  del.onclick=async()=>{
   if(native&&pending[s.number]){await forget(s.number);$('s'+s.number).replaceWith(card(s));showPhone();return;}
   if(native){note.textContent='الحذف من الموقع يتم من الكمبيوتر.';return;}
-  if(!confirm(`حذف تسجيل سورة ${s.name} من الكمبيوتر؟`))return;
+  if(!confirm(`حذف تسجيل سورة ${s.name} ${mode.online?'من الموقع':'من الكمبيوتر'}؟`))return;
   const r=await api('/'+s.number,{method:'DELETE'}).catch(()=>null);
   if(!r?.ok){note.textContent='تعذّر الحذف.';return;}
-  delete index.surahs[s.number];const fresh=card(s);fresh.querySelector('.rec-actions .rec-note').textContent='حُذف. انشر ليُحذف من الموقع أيضًا.';$('s'+s.number).replaceWith(fresh);progress();
+  delete index.surahs[s.number];const fresh=card(s);fresh.querySelector('.rec-actions .rec-note').textContent=mode.online?'حُذف من الموقع.':'حُذف. انشر ليُحذف من الموقع أيضًا.';$('s'+s.number).replaceWith(fresh);progress();
  };
  box.append(start,upload,stop,save,drop,del,picker,take,note);
  return box;
@@ -225,16 +233,18 @@ if('mediaSession'in navigator){for(const [a,f] of [['play',()=>player.play()],['
 for(const [eye,input] of [['recEye','recPass'],['recPEye','recPPass']])$(eye).onclick=()=>{const p=$(input),show=p.type==='password';p.type=show?'text':'password';$(eye).setAttribute('aria-label',show?'إخفاء كلمة المرور':'إظهار كلمة المرور');};
 $('recLoginForm').onsubmit=async e=>{
  e.preventDefault();$('recLoginNote').textContent='جارٍ الدخول…';
- const r=await api('/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({user:$('recUser').value.trim(),password:$('recPass').value})}).catch(()=>null);
+ const r=await api('/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({user:$('recUser').value.trim(),password:$('recPass').value,...(needCode?{code:$('recWebCode').value.trim()}:{})})}).catch(()=>null);
  const data=r?await r.json().catch(()=>({})):{};
  if(!r?.ok){$('recLoginNote').textContent=data.message||'تعذّر الدخول.';return;}
- $('recPass').value='';load();
+ $('recPass').value='';$('recWebCode').value='';$('recLoginNote').textContent='';load();
 };
 $('recLogout').onclick=async()=>{await api('/logout',{method:'POST'}).catch(()=>{});load();};
 $('recPublish').onclick=async()=>{
  const b=$('recPublish');b.disabled=true;$('recToolsNote').textContent='جارٍ النشر على الموقع…';
  const r=await api('/publish',{method:'POST'}).catch(()=>null),data=r?await r.json().catch(()=>({})):{};
- b.disabled=false;$('recToolsNote').textContent=data.message||(r?.ok?'تم النشر.':'تعذّر النشر.');
+ b.disabled=false;
+ if(r?.ok)await load().catch(()=>{}); // recordings saved from the website may have been copied into Taskeeeel
+ $('recToolsNote').textContent=data.message||(r?.ok?'تم النشر.':'تعذّر النشر.');
 };
 // Phone sign-in: checked by the computer when it can be reached; otherwise recording starts now and the check happens when sending.
 $('recPhoneForm').onsubmit=async e=>{

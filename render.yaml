@@ -17,3 +17,10 @@ services:
       # The server also limits use per person and per day (ASSISTANT_DAILY_LIMIT, default 300 requests).
       - key: ANTHROPIC_API_KEY
         sync: false
+      # Optional: recording surahs from the website (recordings.html) with a user name and password.
+      # RECORDER_LOGIN: the line printed by  node recordings.cjs --online-login <user> <password>  (10+ characters).
+      # GITHUB_TOKEN: a fine-grained token for this repository only, with "Contents: Read and write".
+      - key: RECORDER_LOGIN
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false

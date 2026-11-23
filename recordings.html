@@ -32,6 +32,20 @@
     <li>تُحفظ الملفات في مجلد <b>Taskeeeel</b> على الكمبيوتر.</li>
     <li>اضغط <b>📤 نشر على الموقع</b> ليسمعها الزوار خلال دقيقة أو دقيقتين.</li>
    </ol>
+   <h3>🌐 التسجيل من موقع الهاتف (من أي مكان)</h3>
+   <ol>
+    <li>افتح <a href="https://telawa-exame.onrender.com/recordings.html" dir="ltr">https://telawa-exame.onrender.com/recordings.html</a> من متصفح الهاتف. قد يستغرق فتحه دقيقة إذا كان الخادم نائمًا.</li>
+    <li>اكتب اسم المستخدم وكلمة المرور، ثم اضغط «دخول».</li>
+    <li>اضغط <b>🎙 تسجيل</b> أو <b>📁 رفع ملف</b> بجانب السورة، ثم <b>💾 حفظ</b>. يُنشر التسجيل على الموقع مباشرة، حتى 50 ميجابايت.</li>
+    <li>على الكمبيوتر، اضغط <b>📤 نشر على الموقع</b> لتُنسخ تسجيلات الموقع إلى مجلد Taskeeeel.</li>
+   </ol>
+   <h3>🏠 التسجيل من متصفح الهاتف على شبكة البيت</h3>
+   <ol>
+    <li>على الكمبيوتر، شغّل <b>start-recorder.cmd</b>.</li>
+    <li>في متصفح الهاتف، افتح العنوان الظاهر في النافذة مع /recordings.html، مثل <span dir="ltr">http://192.168.1.20:8787/recordings.html</span>.</li>
+    <li>اكتب اسم المستخدم وكلمة المرور ورمز الاقتران الظاهر في نافذة start-recorder.</li>
+    <li>اضغط <b>📁 رفع ملف</b> واختر تسجيلًا من تطبيق المسجّل في هاتفك. يُحفظ مباشرة في Taskeeeel. التسجيل بالميكروفون غير متاح هنا لأن المتصفح لا يسمح به على عنوان محلي غير آمن.</li>
+   </ol>
    <h3>📱 التسجيل من تطبيق الهاتف</h3>
    <ol>
     <li>على الكمبيوتر، شغّل <b>start-recorder.cmd</b>، وانسخ العنوان الذي يظهر مثل <span dir="ltr">192.168.1.20:8787</span>. إذا سألك Windows، فاسمح لـ Node.js بالشبكات الخاصة فقط.</li>
@@ -43,7 +57,7 @@
    <p>mp3 وm4a وmp4 وaac وwav وogg وopus وwebm وflac وamr و3gp، حتى 95 ميجابايت. يفضَّل mp3 أو m4a لأنهما يعملان في كل المتصفحات.</p>
    <h3>🔒 ملاحظات</h3>
    <ul>
-    <li>التسجيل والحفظ متاحان لحساب المسجِّل فقط، والزوار يستمعون فقط.</li>
+    <li>التسجيل والحفظ متاحان لحساب المسجِّل فقط، ويحتاجان اسم المستخدم وكلمة المرور في كل الطرق. الزوار يستمعون فقط.</li>
     <li>كل تسجيل يُنشر يصبح متاحًا لأي زائر.</li>
     <li>الحذف من الموقع يتم من الكمبيوتر: احذف التسجيل ثم اضغط «نشر على الموقع».</li>
     <li>اختر كلمة مرور قوية لحساب المسجِّل، خاصة عند استخدام start-recorder.cmd على شبكة المنزل.</li>
@@ -55,8 +69,10 @@
 
  <section id="recPublic" class="card rec-public" hidden>
   <b>🎙 أين أزرار التسجيل والرفع؟</b>
-  <p>هذه نسخة الاستماع العامة. يسجّل صاحب الحساب أو يرفع الملفات من مكانين فقط:</p>
+  <p>هذه نسخة الاستماع العامة. يسجّل صاحب الحساب أو يرفع الملفات باسم المستخدم وكلمة المرور من:</p>
   <ul>
+   <li><b>من موقع الهاتف أو أي متصفح:</b> <a href="https://telawa-exame.onrender.com/recordings.html" dir="ltr">telawa-exame.onrender.com/recordings.html</a></li>
+   <li><b>من متصفح الهاتف على شبكة البيت:</b> شغّل <b>start-recorder.cmd</b> وافتح العنوان الظاهر فيه مع <span dir="ltr">/recordings.html</span>.</li>
    <li><b>من الكمبيوتر:</b> شغّل <b>start.cmd</b> من مجلد التطبيق، ثم افتح <span dir="ltr">http://localhost:8787/recordings.html</span> وسجّل الدخول.</li>
    <li><b>من تطبيق الهاتف:</b> افتح «تسجيلات السور» في التطبيق، وسجّل الدخول بعنوان الكمبيوتر ورمز الاقتران.</li>
   </ul>
@@ -64,8 +80,9 @@
 
  <section id="recLogin" class="card rec-login" hidden>
   <h2>🎙 دخول المسجِّل</h2>
-  <p class="muted">التسجيل متاح لصاحب الحساب من هذا الكمبيوتر فقط، والزوار يستمعون.</p>
+  <p class="muted" id="recLoginIntro">التسجيل متاح لصاحب الحساب فقط، والزوار يستمعون.</p>
   <form id="recLoginForm">
+   <label id="recCodeRow" hidden>رمز الاقتران (يظهر في نافذة start-recorder على الكمبيوتر)<input id="recWebCode" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" dir="ltr" autocomplete="one-time-code"></label>
    <label>اسم المستخدم<input id="recUser" autocomplete="username" required></label>
    <label>كلمة المرور<span class="rec-pass"><input id="recPass" type="password" autocomplete="current-password" required><button type="button" id="recEye" aria-label="إظهار كلمة المرور" title="إظهار كلمة المرور">👁</button></span></label>
    <button type="submit" class="rec-primary">دخول</button>
@@ -93,7 +110,7 @@
  </section>
 
  <section id="recTools" class="card rec-tools" hidden>
-  <span>✓ أنت مسجّل الدخول. سجّل أي سورة، ثم انشر التسجيلات ليسمعها زوار الموقع.</span>
+  <span id="recToolsText">✓ أنت مسجّل الدخول. سجّل أي سورة، ثم انشر التسجيلات ليسمعها زوار الموقع.</span>
   <div><button type="button" id="recPublish" class="rec-primary">📤 نشر على الموقع</button><button type="button" id="recLogout" class="rec-ghost">خروج</button></div>
   <small id="recToolsNote" role="status"></small>
  </section>

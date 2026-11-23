@@ -174,7 +174,7 @@ test('surah recordings: only a signed-in local user saves to the folder, and eve
   const server=require('./server.cjs').createServer();await new Promise(r=>server.listen(0,'127.0.0.1',r));const base='http://127.0.0.1:'+server.address().port;
   try{
    const H={'x-recorder':'1'};
-   assert.deepEqual(await (await fetch(base+'/api/recordings/status')).json(),{local:true,signedIn:false,ready:true});
+   assert.deepEqual(await (await fetch(base+'/api/recordings/status')).json(),{local:true,online:false,signedIn:false,ready:true,code:false,max:95*1024*1024});
    assert.equal((await fetch(base+'/api/recordings/1',{method:'PUT',headers:{...H,'content-type':'audio/webm'},body:'x'})).status,401);
    assert.equal((await fetch(base+'/api/recordings/login',{method:'POST',headers:{...H,'content-type':'application/json'},body:JSON.stringify({user:'moh',password:'no'})})).status,401);
    assert.equal((await fetch(base+'/api/recordings/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({user:'moh',password:'moh'})})).status,403);
@@ -235,6 +235,63 @@ test('surah recordings: home Wi-Fi sign-in needs the pairing code shown on the c
   // two wrong codes and three wrong passwords make five wrong tries within a minute, so the next one is refused
   assert.equal((await tryLogin({password:'no',code:ready.code})).status,429);
  }finally{child.kill();fs.rmSync(dir,{recursive:true,force:true});}
+});
+test('surah recordings online: the website signs in with user and password, and commits each recording to GitHub',async()=>{
+ // A small stand-in for the GitHub API: one branch whose recordings/ folder changes with each commit.
+ let head='c0',n=0;const commits={c0:{tree:'t0',files:{}}},blobs={},trees={t0:{}};
+ const gh=http.createServer(async(req,res)=>{
+  const chunks=[];for await(const c of req)chunks.push(c);const body=chunks.length?JSON.parse(Buffer.concat(chunks)):null,u=new URL(req.url,'http://x'),p=u.pathname,out=(code,v)=>{res.writeHead(code,{'content-type':'application/json'});res.end(typeof v==='string'?v:JSON.stringify(v));};
+  assert.equal(req.headers.authorization,'Bearer test-token');
+  if(p==='/user')return out(200,{login:'owner',id:7});
+  if(p.endsWith('/git/ref/heads/main'))return out(200,{object:{sha:head}});
+  if(p.endsWith('/contents/recordings')){const names=Object.keys(commits[u.searchParams.get('ref')].files);return names.length?out(200,names.map(name=>({name}))):out(404,{});}
+  if(p.endsWith('/contents/recordings/index.json')){const f=commits[u.searchParams.get('ref')].files['index.json'];return f?out(200,f):out(404,{});}
+  if(/\/git\/commits\/c\d+$/.test(p))return out(200,{tree:{sha:commits[p.split('/').pop()].tree}});
+  if(p.endsWith('/git/blobs')){const sha='b'+(++n);blobs[sha]=Buffer.from(body.content,'base64').toString();return out(201,{sha});}
+  if(p.endsWith('/git/trees')){const next={...trees[body.base_tree]};for(const e of body.tree){const name=e.path.replace('recordings/','');if(e.sha===null)delete next[name];else next[name]=e.content??blobs[e.sha];}const sha='t'+(++n);trees[sha]=next;return out(201,{sha});}
+  if(p.endsWith('/git/commits')){assert.match(body.message,/\[skip render\]/);assert.equal(body.author.email,'7+owner@users.noreply.github.com');const sha='c'+(++n);commits[sha]={tree:body.tree,files:trees[body.tree]};return out(201,{sha});}
+  if(p.endsWith('/git/refs/heads/main')){head=body.sha;return out(200,{});}
+  out(404,{});
+ });
+ await new Promise(r=>gh.listen(0,'127.0.0.1',r));
+ const R=require('./recordings.cjs'),env={RENDER:'true',GITHUB_TOKEN:'test-token',GITHUB_API:'http://127.0.0.1:'+gh.address().port,RECORDER_LOGIN:JSON.stringify({user:'moh',...R.hashPassword('long-enough-pass')})};
+ Object.assign(process.env,env);
+ const server=require('./server.cjs').createServer();await new Promise(r=>server.listen(0,'127.0.0.1',r));const base='http://127.0.0.1:'+server.address().port,H={'x-recorder':'1','content-type':'application/json','x-forwarded-for':'203.0.113.9'};
+ try{
+  const status=await (await fetch(base+'/api/recordings/status')).json();assert.equal(status.online,true);assert.equal(status.local,false);assert.equal(status.code,false);assert.equal(status.max,50*1024*1024);
+  assert.equal((await fetch(base+'/api/recordings/1',{method:'PUT',headers:{'x-recorder':'1','content-type':'audio/mpeg'},body:'x'})).status,401);
+  assert.equal((await fetch(base+'/api/recordings/login',{method:'POST',headers:H,body:JSON.stringify({user:'moh',password:'wrong'})})).status,401);
+  const ok=await fetch(base+'/api/recordings/login',{method:'POST',headers:H,body:JSON.stringify({user:'moh',password:'long-enough-pass'})});assert.equal(ok.status,200);
+  assert.match(ok.headers.get('set-cookie'),/HttpOnly; Secure; SameSite=Strict/);const cookie=ok.headers.get('set-cookie').split(';')[0],A={'x-recorder':'1',cookie};
+  assert.equal((await fetch(base+'/api/recordings/1',{method:'PUT',headers:{'x-recorder':'1',cookie:'rec=9999999999999.'+'0'.repeat(64),'content-type':'audio/mpeg'},body:'x'})).status,401);
+  const saved=await fetch(base+'/api/recordings/36',{method:'PUT',headers:{...A,'content-type':'application/octet-stream','x-file-ext':'m4a','x-duration':'61'},body:Buffer.from('m4a-audio')});
+  assert.equal(saved.status,200);const entry=await saved.json();assert.equal(entry.file,'surah-036.m4a');assert.equal(entry.seconds,61);
+  assert.equal(commits[head].files['surah-036.m4a'],'m4a-audio');assert.equal(JSON.parse(commits[head].files['index.json']).surahs['36'].file,'surah-036.m4a');
+  // a new take in another format replaces the old file in the same commit
+  assert.equal((await fetch(base+'/api/recordings/36',{method:'PUT',headers:{...A,'content-type':'audio/mpeg'},body:'mp3-audio'})).status,200);
+  assert.deepEqual(Object.keys(commits[head].files).sort(),['index.json','surah-036.mp3']);
+  assert.equal((await (await fetch(base+'/recordings/index.json')).json()).surahs['36'].file,'surah-036.mp3');
+  const audio=await fetch(base+'/recordings/surah-036.mp3',{redirect:'manual'});assert.equal(audio.status,302);assert.equal(audio.headers.get('location'),`https://raw.githubusercontent.com/adelaziz2026/telawa-exame/${head}/recordings/surah-036.mp3`);
+  assert.equal((await fetch(base+'/recordings/surah-001.mp3',{redirect:'manual'})).status,404);
+  assert.equal((await fetch(base+'/api/recordings/publish',{method:'POST',headers:A})).status,200);
+  assert.equal((await fetch(base+'/api/recordings/36',{method:'DELETE',headers:A})).status,200);assert.deepEqual(Object.keys(commits[head].files),['index.json']);
+ }finally{server.close();gh.close();for(const k of Object.keys(env))delete process.env[k];}
+});
+test('publishing from the computer keeps recordings saved on the website, but not ones deleted here',()=>{
+ const os=require('node:os'),path=require('node:path'),{pullFromSite}=require('./publish-recordings.cjs');
+ const site=fs.mkdtempSync(path.join(os.tmpdir(),'site-')),pc=fs.mkdtempSync(path.join(os.tmpdir(),'pc-')),synced=path.join(pc,'.synced');
+ try{
+  const day=t=>new Date(Date.UTC(2026,10,t)).toISOString();
+  fs.writeFileSync(path.join(site,'index.json'),JSON.stringify({surahs:{1:{file:'surah-001.mp3',updated:day(20)},2:{file:'surah-002.m4a',updated:day(5)},3:{file:'surah-003.webm',updated:day(21)}}}));
+  for(const f of ['surah-001.mp3','surah-002.m4a','surah-003.webm'])fs.writeFileSync(path.join(site,f),'site '+f);
+  fs.writeFileSync(path.join(pc,'index.json'),JSON.stringify({surahs:{3:{file:'surah-003.ogg',updated:day(10)}}}));fs.writeFileSync(path.join(pc,'surah-003.ogg'),'old');
+  fs.writeFileSync(synced,String(Date.parse(day(15))));
+  assert.equal(pullFromSite(site,pc,synced),2);
+  const idx=JSON.parse(fs.readFileSync(path.join(pc,'index.json'),'utf8')).surahs;
+  assert.equal(idx[1].file,'surah-001.mp3');assert.equal(idx[2],undefined);assert.equal(idx[3].file,'surah-003.webm');
+  assert.equal(fs.existsSync(path.join(pc,'surah-003.ogg')),false);assert.equal(fs.readFileSync(path.join(pc,'surah-001.mp3'),'utf8'),'site surah-001.mp3');
+  assert.equal(pullFromSite(site,pc,synced),0);
+ }finally{fs.rmSync(site,{recursive:true,force:true});fs.rmSync(pc,{recursive:true,force:true});}
 });
 test('memorising: each ayah repeats, the passage repeats, and a pause can follow each ayah',async()=>{
  const real={'data/quran.json':require('./data/quran.json'),'data/simple.json':require('./data/simple.json')};
