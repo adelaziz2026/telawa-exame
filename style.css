@@ -613,3 +613,11 @@ body.mushaf-active{overflow:hidden}
 
 .rec-public{padding:14px 18px;margin-bottom:16px;line-height:1.9;border-inline-start:4px solid var(--primary)}
 .rec-public p{margin:4px 0}.rec-public ul{margin:0;padding-right:20px}
+
+.rec-gate{border:1px solid var(--line);border-radius:16px;padding:20px;width:min(380px,calc(100vw - 32px));background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
+.rec-gate::backdrop{background:rgba(0,0,0,.45)}
+.rec-gate form{display:grid;gap:10px}.rec-gate h2{margin:0;font-size:18px}.rec-gate p{margin:0}
+.rec-gate label{display:grid;gap:4px;font-size:13px;font-weight:600}
+.rec-gate input{padding:10px 12px;border:1px solid var(--line);border-radius:10px;font:inherit;background:var(--bg);color:var(--ink)}
+.rec-gate-actions{display:flex;gap:8px}.rec-gate small{color:var(--bad);font-size:12px}
+.rec-gate-row{margin-top:10px}

@@ -96,6 +96,12 @@ async function load(){
  $('recToolsText').textContent=status?.online?'✓ أنت مسجّل الدخول. كل تسجيل تحفظه يُنشر على الموقع مباشرة، ويُنسخ إلى الكمبيوتر عند الضغط على «نشر» هناك.':'✓ أنت مسجّل الدخول. سجّل أي سورة، ثم انشر التسجيلات ليسمعها زوار الموقع.';
  if(can&&!status.ready)$('recLoginNote').textContent=status.online?'لم يُضبط حساب التسجيل على الموقع بعد.':'لم يُضبط حساب التسجيل بعد على هذا الكمبيوتر.';
  await loadPending();showPhone();render();
+ // Arriving from the listening site with a surah and an action: ask for the login, then start it.
+ const ask=new URLSearchParams(location.search),n=Number(ask.get('surah')),what=ask.get('do');
+ if(n>=1&&n<=114&&(what==='rec'||what==='upload')){
+  history.replaceState(null,'',location.pathname);
+  if(webRecorder){gateAction={n,what};runGate();}else openGate(n,what);
+ }
 }
 function progress(){
  const n=Object.keys(index.surahs).length;
@@ -123,7 +129,7 @@ function card(s){
   li.append(row);
   if(wait)li.append(Object.assign(document.createElement('small'),{className:'rec-note',textContent:'محفوظ على الهاتف، ويُرسل إلى الكمبيوتر عند الاتصال بشبكته.'}));
  }
- if(canRecord())li.append(recorderFor(s,!!rec||!!wait));
+ li.append(canRecord()?recorderFor(s,!!rec||!!wait):gateButtons(s));
  return li;
 }
 // Saves a take or a chosen file: straight into Taskeeeel on the computer, or onto the phone's waiting list.
@@ -190,6 +196,47 @@ function recorderFor(s,has){
  box.append(start,upload,stop,save,drop,del,picker,take,note);
  return box;
 }
+
+// ---------- Record and upload buttons on every surah: they ask for the recorder's login first ----------
+// Where there is no server to save to (the listening site on GitHub), they open the online recording page instead.
+const ONLINE_PAGE='https://telawa-exame.onrender.com/recordings.html';
+let gateAction=null;
+function gateButtons(s){
+ const box=document.createElement('div');box.className='rec-actions rec-gate-row';
+ for(const [what,text,cls] of [['rec','🎙 تسجيل','rec-primary'],['upload','📁 رفع ملف','rec-ghost']]){
+  const b=Object.assign(document.createElement('button'),{type:'button',textContent:text,className:cls});
+  b.onclick=()=>openGate(s.number,what);box.append(b);
+ }
+ return box;
+}
+function openGate(n,what){
+ if(native){$('recPhone').scrollIntoView({behavior:'smooth',block:'center'});$('recAddr').focus();$('recPhoneLoginNote').textContent='سجّل الدخول أولًا، ثم اضغط زر التسجيل أو الرفع.';return;}
+ if(!mode.local&&!mode.online){
+  if(location.origin===new URL(ONLINE_PAGE).origin){alert('التسجيل من هذا الموقع غير مفعّل بعد. يجب إضافة RECORDER_LOGIN و GITHUB_TOKEN في إعدادات Render.');return;}
+  location.href=`${ONLINE_PAGE}?surah=${n}&do=${what}`;return;
+ }
+ gateAction={n,what};
+ $('recGateWhat').textContent=`${what==='rec'?'تسجيل':'رفع ملف'} لسورة ${surahs[n-1]?.name||n}`;
+ $('recGateCodeRow').hidden=!needCode;$('recGateCode').required=needCode;$('recGateNote').textContent='';
+ $('recGate').showModal();$('recGateUser').focus();
+}
+// After signing in, press the chosen button on that surah's card.
+function runGate(){
+ const a=gateAction;gateAction=null;if(!a)return;
+ const box=$('s'+a.n);box?.scrollIntoView({block:'center'});
+ const b=[...(box?.querySelectorAll('.rec-actions button')||[])].find(x=>!x.hidden&&x.textContent.includes(a.what==='rec'?'تسجيل':'رفع ملف'));
+ if(b)b.click();else if(a.what==='rec'&&box)box.querySelector('.rec-actions .rec-note').textContent='التسجيل بالميكروفون غير متاح هنا. سجّل بتطبيق المسجّل في هاتفك، ثم اضغط «رفع ملف».';
+}
+$('recGateForm').onsubmit=async e=>{
+ e.preventDefault();$('recGateNote').textContent='جارٍ الدخول…';
+ const r=await api('/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({user:$('recGateUser').value.trim(),password:$('recGatePass').value,...(needCode?{code:$('recGateCode').value.trim()}:{})})}).catch(()=>null);
+ const data=r?await r.json().catch(()=>({})):{};
+ if(!r?.ok){$('recGateNote').textContent=data.message||'تعذّر الدخول.';return;}
+ $('recGatePass').value='';$('recGateCode').value='';$('recGate').close();
+ // Shown at once (no reload), so the file picker still opens from this tap.
+ webRecorder=true;$('recLogin').hidden=true;$('recTools').hidden=false;render();runGate();
+};
+$('recGateCancel').onclick=()=>{gateAction=null;$('recGate').close();};
 
 // ---------- Controls ----------
 $('recSearch').oninput=render;$('recShow').onchange=render;

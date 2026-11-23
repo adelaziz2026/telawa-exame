@@ -134,5 +134,16 @@
  </div>
  <audio id="recAudio" preload="none"></audio>
 </div>
+<dialog id="recGate" class="rec-gate" aria-labelledby="recGateTitle">
+ <form id="recGateForm">
+  <h2 id="recGateTitle">🎙 دخول المسجِّل</h2>
+  <p class="muted" id="recGateWhat"></p>
+  <label id="recGateCodeRow" hidden>رمز الاقتران (يظهر في نافذة start-recorder)<input id="recGateCode" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" dir="ltr" autocomplete="one-time-code"></label>
+  <label>اسم المستخدم<input id="recGateUser" autocomplete="username" required></label>
+  <label>كلمة المرور<input id="recGatePass" type="password" autocomplete="current-password" required></label>
+  <div class="rec-gate-actions"><button type="submit" class="rec-primary">دخول</button><button type="button" id="recGateCancel" class="rec-ghost">إلغاء</button></div>
+  <small id="recGateNote" role="status"></small>
+ </form>
+</dialog>
 <script src="recordings.js"></script>
 </body></html>

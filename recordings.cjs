@@ -214,8 +214,8 @@ module.exports = {handleRecordings, hashPassword, readIndex, FILE, HOME_NETWORK,
 if (require.main === module) {
   const [flag, user, password] = process.argv.slice(2);
   if (flag === '--online-login' && user && password) {
-    // The online page can be reached by anyone, so a short password could be guessed.
-    if (password.length < 10) { console.log('كلمة المرور قصيرة: استخدم 10 أحرف على الأقل للتسجيل من الموقع.\nUse at least 10 characters for the online login.'); process.exit(1); }
+    // The online page can be reached by anyone, so a short password could be guessed: warn, but leave the choice to the owner.
+    if (password.length < 10) console.log('⚠ تنبيه: كلمة المرور قصيرة ويسهل تخمينها، وأي شخص يعرفها يستطيع إضافة تسجيلات أو حذفها من الموقع.\n⚠ Warning: a short password is easy to guess.\n');
     console.log('ضع هذه القيمة في Render باسم RECORDER_LOGIN / Paste this into Render as RECORDER_LOGIN:\n');
     console.log(JSON.stringify({user, ...hashPassword(password)}));
     process.exit(0);
