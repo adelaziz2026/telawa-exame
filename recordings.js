@@ -87,6 +87,8 @@ async function load(){
  index=list&&typeof list.surahs==='object'?list:{surahs:{}};
  webRecorder=!!status?.signedIn;
  $('recLogin').hidden=!(status?.local&&!status.signedIn);
+ // On the public site there is nowhere to save recordings, so say where the record and upload buttons are.
+ $('recPublic').hidden=native||!!status?.local;
  $('recTools').hidden=!webRecorder;
  if(status?.local&&!status.ready)$('recLoginNote').textContent='لم يُضبط حساب التسجيل بعد على هذا الكمبيوتر.';
  await loadPending();showPhone();render();

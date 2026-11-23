@@ -7,7 +7,19 @@ if(NATIVE)document.documentElement.classList.add('native');
 if(NATIVE){for(const v of ['browser','device-best'])document.querySelector?.(`#engine option[value="${v}"]`)?.remove();if(['browser','device-best'].includes(load('engine',null)))save('engine','device');}
 // On free static hosting (GitHub Pages, Netlify…) there is no server either: detect it and hide the same features.
 // Only a definite 404 means static hosting: a server that is waking up (free hosting sleeps) or a slow network must not hide the meeting.
-else fetch('api/health',{cache:'no-store'}).then(r=>{if(r.status===404)document.documentElement?.classList.add('no-server');}).catch(()=>{});
+else fetch('api/health',{cache:'no-store'}).then(r=>{if(r.status===404){document.documentElement?.classList.add('no-server');useHostedMeeting();}}).catch(()=>{});
+// Without a server of its own (the phone app, static hosting) the meeting room is not hidden: its links open the
+// hosted app's meeting page instead (Render, the same app with its server), in the system browser on phones.
+const HOSTED_MEETING='https://telawa-exame.onrender.com/meet.html';
+function useHostedMeeting(){
+ for(const a of document.querySelectorAll?.('a[href="meet.html"]')||[]){
+  a.href=HOSTED_MEETING;a.rel='noopener';
+  // In the phone app a new window may be ignored; leaving the app's page for another site opens the system browser.
+  if(NATIVE)a.onclick=e=>{e.preventDefault();location.href=HOSTED_MEETING;};else a.target='_blank';
+ }
+ document.documentElement?.classList.add('hosted-meet');
+}
+if(NATIVE)useHostedMeeting();
 // Start-up guard: if anything stops the page from starting (for example an old cached file that no longer matches
 // the others), say so and offer a repair instead of showing "loading" forever.
 function startupFailed(detail){
@@ -244,7 +256,11 @@ function review(){
  save('scores',scores);save('learning',brain);save('letters',letterSlips);updateProgress();showRef();
  const counted=items.filter(i=>i.type!=='repeated'),count=counted.filter(i=>i.type!=='correct').length,score=counted.length?Math.round((counted.length-count)/counted.length*100):0;renderSummary(items);
  $('resultLabel').textContent=count?`${count===1?'موضع واحد':count===2?'موضعان':count<=10?`${count} مواضع`:`${count} موضعًا`} للمراجعة · ${score}٪`:'الكلمات متطابقة';showScore(score);reviewed=true;updateSteps();renderNotes(items);updatePanel();
- $('resultIntro').textContent=(many?`نتيجة ${segs.length} آيات معًا. `:'')+'راجع هذه المواضع بالاستماع؛ قد يكون الاختلاف ناتجًا عن التعرف الصوتي. تطابق الكلمات لا يعني صحة التجويد.';
+ // Several words missing at the very end usually means the recording stopped early or speech recognition stopped
+ // before the end (the most common recognition error on real recitations), not that the reader skipped them.
+ let tail=0;for(let k=items.length-1;k>=0&&items[k].type==='missing';k--)tail++;
+ const cut=tail>=2?`⚠️ آخر ${tail<=10?tail+' كلمات':tail+' كلمة'} من الآية لم تُسمع؛ غالبًا توقف التسجيل أو التعرف الصوتي قبل نهايتها. اقرأ حتى آخر الآية ثم أوقف التسميع، أو اقرأ الجزء الأخير وحده. `:'';
+ $('resultIntro').textContent=cut+(many?`نتيجة ${segs.length} آيات معًا. `:'')+'راجع هذه المواضع بالاستماع؛ قد يكون الاختلاف ناتجًا عن التعرف الصوتي. تطابق الكلمات لا يعني صحة التجويد.';
 }
 
 let wordPlayer=null,wordButton=null,wordRequest=0;

@@ -381,7 +381,8 @@ footer{border-top:1px solid var(--line);padding:20px;text-align:center;color:var
 @media (max-width:650px){.meet-link{display:none}}
 
 /* Phone app: the meeting room needs a hosted server, so its entry points are hidden there. */
-.native .meet-link,.native .meet-btn,.no-server .meet-link,.no-server .meet-btn{display:none!important}
+/* Without a server the meeting links point at the hosted app (class hosted-meet); hide them only if that did not happen. */
+.native:not(.hosted-meet) .meet-link,.native:not(.hosted-meet) .meet-btn,.no-server:not(.hosted-meet) .meet-link,.no-server:not(.hosted-meet) .meet-btn{display:none!important}
 .native #engine option[value="browser"]{display:none}
 .native #install{display:none!important}
 
@@ -609,3 +610,6 @@ body.mushaf-active{overflow:hidden}
 .only-mistakes .word.correct,.only-mistakes .word.repeated{display:none}
 .sep-score{display:inline-block;margin-inline-start:4px;padding:1px 6px;border-radius:99px;font-family:'Noto Sans Arabic',Tahoma,sans-serif;font-size:11px;vertical-align:middle}
 .sep-score.good{background:var(--good-bg);color:var(--good)}.sep-score.warn{background:var(--warn-bg);color:var(--warn)}.sep-score.bad{background:var(--bad-bg);color:var(--bad)}
+
+.rec-public{padding:14px 18px;margin-bottom:16px;line-height:1.9;border-inline-start:4px solid var(--primary)}
+.rec-public p{margin:4px 0}.rec-public ul{margin:0;padding-right:20px}

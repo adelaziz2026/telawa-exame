@@ -58,7 +58,8 @@ function markRepeats(items){
   const it=items[k];if(it.type!=='changed'||!/\s/.test(it.spoken||''))continue;
   const [p1,p2]=it.spoken.split(/\s+/),word=key(it.expected),prev=[];
   for(let m=k-1;m>=0&&prev.length<8;m--)if(items[m].expected&&items[m].type!=='missing')prev.push(key(items[m].expected));
-  if(key(p2)===word&&(key(p1)===word||prev.includes(key(p1))))items.splice(k,1,{type:'repeated',spoken:p1},{type:'correct',expected:it.expected,spoken:p2});
+  const restart=key(p1).length>=2&&key(p1).length<word.length&&key(p1)[0]===word[0]&&distance(key(p1),word.slice(0,key(p1).length),1)<=1;
+  if(key(p2)===word&&(key(p1)===word||prev.includes(key(p1))||restart))items.splice(k,1,{type:'repeated',spoken:p1},{type:'correct',expected:it.expected,spoken:p2});
   else if(key(p1)===word&&key(p2)===word)items.splice(k,1,{type:'correct',expected:it.expected,spoken:p1},{type:'repeated',spoken:p2});
  }
  for(let k=0;k<items.length;k++){
@@ -69,6 +70,9 @@ function markRepeats(items){
   for(let m=e+1;m<items.length&&after.length<8;m++)if(items[m].expected)after.push(key(items[m].expected));
   const slice=list=>{for(let s=0;s+run.length<=list.length;s++)if(run.every((w,i)=>w===list[s+i]))return true;return false;};
   if(run.length&&(slice(before)||run.every((w,i)=>w===after[i])))for(let m=k;m<=e;m++)items[m].type='repeated';
+  // A word started and then restarted («فأن… فأنجيناه»): a single extra token that is the beginning of the next word
+  // (at least 2 letters, one letter off at most, as speech recognition writes a cut-off word) is a restart, not a mistake.
+  else if(run.length===1&&after[0]&&run[0].length>=2&&run[0].length<after[0].length&&distance(run[0],after[0].slice(0,run[0].length),1)<=1&&run[0][0]===after[0][0])items[k].type='repeated';
   k=e;
  }
  return items;

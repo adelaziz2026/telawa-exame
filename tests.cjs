@@ -958,3 +958,26 @@ test('assistant serves the app sites and phone app, refuses others, and stops at
   assert.equal((await s.post(body,{'CF-Connecting-IP':'203.0.113.10'})).status,200);
  }finally{assistant.resetLimits();await s.close();assistant.setClient(null);}
 });
+test('a word started and then restarted is not a mistake; a real extra word still is',()=>{
+ const C=require('./compare.js'),types=(e,s)=>C.compare(e,s).map(i=>i.type).join(',');
+ assert.equal(types('فأنجيناه وأصحاب','فأن فأنجيناه وأصحاب'),'repeated,correct,correct');
+ assert.equal(types('إنا أعطيناك الكوثر','إنا أع أعطيناك الكوثر'),'correct,repeated,correct,correct');
+ assert.equal(types('فأنجيناه وأصحاب السفينة','فأنت أمجيناه وأصحاب السفينة'),'repeated,changed,correct,correct');
+ assert.equal(types('الحمد لله رب العالمين','الحمد لله رب كتاب العالمين'),'correct,correct,correct,extra,correct');
+});
+test('on-device audio keeps a quieter ending and splits long recitations at pauses',()=>{
+ const ctx={};vm.runInNewContext(fs.readFileSync(require.resolve('./asr.js'),'utf8'),ctx);const {prepare,segments}=ctx.DeviceASR,SR=16000;
+ const syll=(sec,amp)=>Float32Array.from({length:sec*SR},(_,i)=>amp*Math.sin(i*0.3)*Math.max(0.05,Math.abs(Math.sin(i/2500)))),gap=s=>new Float32Array(Math.round(s*SR)).map((_,i)=>((i*7919)%13-6)*0.0002);
+ const cat=(...p)=>{const out=new Float32Array(p.reduce((n,x)=>n+x.length,0));let o=0;for(const x of p){out.set(x,o);o+=x.length;}return out;};
+ // A loud start and a last word at a twentieth of the volume: the last word stays.
+ assert.ok(prepare(cat(gap(0.5),syll(2,0.8),gap(0.3),syll(1.5,0.04),gap(1))).length/SR>3.6);
+ // 20 s with pauses: several pieces of 4–15 s that cover the recording without gaps; a short clip stays whole.
+ const parts=[gap(0.4)];for(let i=0;i<7;i++)parts.push(syll(2.6,0.6),gap(0.5));const b=prepare(cat(...parts)),sb=segments(b);
+ assert.ok(sb.length>=3);assert.ok(sb.every(([x,y])=>(y-x)/SR<=15));assert.equal(sb[0][0],0);assert.equal(sb.at(-1)[1],b.length);assert.ok(sb.every((s,i)=>!i||s[0]===sb[i-1][1]));
+ assert.equal(segments(prepare(cat(gap(0.3),syll(5,0.6),gap(0.3)))).length,1);
+});
+test('without a server of its own the meeting links open the hosted meeting instead of disappearing',()=>{
+ const src=fs.readFileSync(require.resolve('./app.js'),'utf8'),css=fs.readFileSync(require.resolve('./style.css'),'utf8');
+ assert.match(src,/HOSTED_MEETING='https:\/\/telawa-exame\.onrender\.com\/meet\.html'/);assert.match(src,/if\(NATIVE\)useHostedMeeting\(\);/);
+ assert.match(css,/\.native:not\(\.hosted-meet\) \.meet-link/);assert.doesNotMatch(css,/\.native \.meet-link,\.native \.meet-btn/);
+});

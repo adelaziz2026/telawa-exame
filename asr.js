@@ -49,29 +49,53 @@ async function record(onLevel){
   cancel(){recorder.onstop=null;try{recorder.stop();}catch{}release();}
  };
 }
+const FRAME=480;// 30 ms at 16 kHz
+const energy=audio=>{const rms=[];for(let i=0;i+FRAME<=audio.length;i+=FRAME){let s=0;for(let j=i;j<i+FRAME;j++)s+=audio[j]*audio[j];rms.push(Math.sqrt(s/FRAME));}return rms;};
 // Whisper invents words when given silence or background noise. Keep only the span that contains speech
 // (by frame energy relative to the recording's own noise floor), and return null when there is no speech at all.
+// The ends are found with a lower threshold than speech itself, so a last word read more quietly is not cut off.
 function prepare(audio){
- const frame=480,rms=[];
- for(let i=0;i+frame<=audio.length;i+=frame){let s=0;for(let j=i;j<i+frame;j++)s+=audio[j]*audio[j];rms.push(Math.sqrt(s/frame));}
- const sorted=[...rms].sort((a,b)=>a-b),floor=sorted[Math.floor(sorted.length*0.1)]||0,peak=sorted.at(-1)||0;
- const threshold=Math.max(floor*3,peak*0.1,0.003);
- const voiced=rms.map((r,i)=>r>threshold?i:-1).filter(i=>i>=0);
- if(voiced.length*frame<0.3*SR||peak<floor*4)return null;
- const start=Math.max(0,voiced[0]*frame-0.25*SR),end=Math.min(audio.length,(voiced.at(-1)+1)*frame+0.35*SR);
+ const rms=energy(audio),sorted=[...rms].sort((a,b)=>a-b),floor=sorted[Math.floor(sorted.length*0.1)]||0,peak=sorted.at(-1)||0;
+ const threshold=Math.max(floor*3,peak*0.1,0.003),edge=Math.max(floor*2,peak*0.04,0.002);
+ const voiced=rms.filter(r=>r>threshold).length;
+ if(voiced*FRAME<0.3*SR||peak<floor*4)return null;
+ const first=rms.findIndex(r=>r>edge),last=rms.length-1-[...rms].reverse().findIndex(r=>r>edge);
+ const start=Math.max(0,first*FRAME-0.25*SR),end=Math.min(audio.length,(last+1)*FRAME+0.5*SR);
  const clip=audio.slice(start,end);let max=0;for(const v of clip)max=Math.max(max,Math.abs(v));
  // Normalise loudness so quiet recitation is not mistaken for noise.
  const gain=Math.min(20,0.9/(max||1));
  return clip.map(v=>v*gain);
+}
+// Long recitations are cut at the reader's own pauses into pieces of about 4–15 seconds. Whisper sometimes stops
+// before the end of a long recording (on professional recitations, half of all missed words were the last words of
+// the ayah), and a stumble early on can derail the rest; short pieces avoid both. Returns [start,end] sample ranges.
+function segments(audio){
+ const rms=energy(audio),n=rms.length,sorted=[...rms].sort((a,b)=>a-b),floor=sorted[Math.floor(n*0.1)]||0,peak=sorted.at(-1)||0;
+ if(audio.length<8*SR)return [[0,audio.length]];
+ const quiet=Math.max(floor*3,peak*0.06),minPause=Math.round(0.3*SR/FRAME),cuts=[];
+ // Pauses: runs of quiet frames at least 0.3 s long; a cut goes in the middle of each.
+ for(let i=0;i<n;){if(rms[i]<quiet){let j=i;while(j<n&&rms[j]<quiet)j++;if(j-i>=minPause&&i>0&&j<n)cuts.push(Math.round((i+j)/2));i=j;}else i++;}
+ const out=[];let from=0;
+ const push=to=>{if(to>from)out.push([from*FRAME,Math.min(audio.length,to*FRAME)]);from=to;};
+ for(const c of cuts){const len=(c-from)*FRAME/SR;if(len>=4)push(c);}
+ // No pause for over 15 s: cut at the quietest frame of the last few seconds.
+ const done=[];for(const [x,y] of (push(n),out)){
+  let start=x;while((y-start)/SR>15){const lo=start/FRAME+Math.round(10*SR/FRAME),hi=start/FRAME+Math.round(15*SR/FRAME);let best=lo;for(let k=lo;k<hi&&k<n;k++)if(rms[k]<rms[best])best=k;done.push([start,best*FRAME]);start=best*FRAME;}
+  done.push([start,y]);
+ }
+ // A last piece under 1.5 s joins the one before it.
+ if(done.length>1&&(done.at(-1)[1]-done.at(-1)[0])/SR<1.5){const lastPiece=done.pop();done.at(-1)[1]=lastPiece[1];}
+ return done;
 }
 async function transcribe(blob,kind='accurate',onProgress){
  const asr=await load(kind,onProgress);
  // Whisper expects 16 kHz mono; decoding into a 16 kHz context resamples automatically.
  const speech=prepare((await new OfflineAudioContext(1,1,SR).decodeAudioData(await blob.arrayBuffer())).getChannelData(0));
  if(!speech)return '';
- const result=await asr(speech,{...MODELS[kind].options,chunk_length_s:30,stride_length_s:5,no_repeat_ngram_size:3});
- return result.text.trim();
+ const options={...MODELS[kind].options,chunk_length_s:30,stride_length_s:5,no_repeat_ngram_size:3},parts=[];
+ for(const [x,y] of segments(speech)){const text=(await asr(speech.slice(x,y),options)).text.trim();if(text)parts.push(text);}
+ return parts.join(' ');
 }
-scope.DeviceASR={load,loaded,supported,record,prepare,transcribe,MODELS};
-if(typeof module!=='undefined')module.exports={prepare};
+scope.DeviceASR={load,loaded,supported,record,prepare,segments,transcribe,MODELS};
+if(typeof module!=='undefined')module.exports={prepare,segments};
 })(globalThis);
