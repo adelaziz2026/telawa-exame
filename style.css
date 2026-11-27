@@ -621,3 +621,33 @@ body.mushaf-active{overflow:hidden}
 .rec-gate input{padding:10px 12px;border:1px solid var(--line);border-radius:10px;font:inherit;background:var(--bg);color:var(--ink)}
 .rec-gate-actions{display:flex;gap:8px}.rec-gate small{color:var(--bad);font-size:12px}
 .rec-gate-row{margin-top:10px}
+
+/* ---------- Visual polish ---------- */
+/* Desktop: the recording card keeps its own height and stays in view while the ayah, tafsir and results scroll,
+   instead of stretching to the height of the reader column. */
+@media (min-width:1051px){
+  .workspace{align-items:start}
+  .workspace>.session{position:sticky;top:16px}
+}
+/* Font size: «−» and «+» with a small label, instead of «ا−/ا+» that read like «I−/I+». */
+.verse-tools{align-items:center;gap:6px}
+.verse-tools-label{font-size:11px;color:var(--muted);margin-inline-end:2px}
+.verse-tools button{font-size:18px;line-height:1}
+.verse-tools button:disabled{opacity:.4;cursor:default}
+/* Phones: the selectors as a two-column grid (surah across the top) so nothing runs past the card's edge;
+   the sidebar's recordings link is hidden (the 🎧 button in the header opens it) and the install button stays on one line. */
+@media (max-width:650px){
+  .selectors{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .selectors label{min-width:0}
+  .selectors label:first-child{grid-column:1/-1}
+  .selectors select,.selectors input,.selectors #pageJump,.selectors #juzJump{width:100%;min-width:0}
+  .rec-link{display:none!important}
+  .install{white-space:nowrap;font-size:12px}
+  .brand span{white-space:nowrap}
+}
+/* Tablets (651–1050 px): the single reader column may shrink to the page width; before, its content forced it
+   16 px wider than the page and both cards stuck out past the left edge. */
+@media (max-width:1050px){.workspace{grid-template-columns:minmax(0,1fr)}.workspace>*{min-width:0}}
+/* Recordings sign-in: comfortable touch targets for the name and password fields and the show-password button. */
+.rec-login input{min-height:44px;box-sizing:border-box;padding:10px 12px;font:inherit;font-size:16px}
+.rec-login #recEye{min-width:44px;min-height:44px}
