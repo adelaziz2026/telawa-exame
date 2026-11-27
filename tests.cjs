@@ -147,6 +147,20 @@ test('speech gate refuses silence and background noise instead of letting the mo
  const {prepare}=require('./asr.js');let seed=3;const rand=()=>((seed=(seed*16807)%2147483647)/2147483647)*2-1;
  assert.equal(prepare(new Float32Array(16000*3)),null);
  assert.equal(prepare(Float32Array.from({length:16000*4},()=>rand()*0.004)),null);
+ // Loud steady noise and mains hum with nobody reciting.
+ assert.equal(prepare(Float32Array.from({length:16000*4},()=>rand()*0.2)),null);
+ assert.equal(prepare(Float32Array.from({length:16000*4},(_,i)=>0.2*Math.sin(2*Math.PI*50*i/16000)+rand()*0.02)),null);
+});
+test('speech gate keeps recitation that fills the whole recording over background noise',()=>{
+ // No silence to measure against (recording started mid-word, a fan behind it): these used to come back empty.
+ const {prepare}=require('./asr.js');let seed=5;const rand=()=>((seed=(seed*16807)%2147483647)/2147483647)*2-1;
+ const audio=Float32Array.from({length:16000*4},(_,i)=>rand()*0.03+(0.03+0.2*Math.abs(Math.sin(i/1600)))*Math.sin(i*0.9));
+ assert.ok(prepare(audio));assert.ok(prepare(audio).length>=audio.length-480);
+});
+test('a correctly read word next to a stray token stays correct',()=>{
+ const types=(e,h)=>require('./compare.js').compare(e,h).map(i=>i.type).join(',');
+ assert.equal(types('ويمنعون الماعون','ويمنعون عم الماعون'),'correct,extra,correct');
+ assert.equal(types('الحمد لله رب العالمين','الحمد لله رب العالمين بك'),'correct,correct,correct,correct,extra');
 });
 test('speech gate trims silence around speech and normalises quiet recitation',()=>{
  const {prepare}=require('./asr.js');const sr=16000;

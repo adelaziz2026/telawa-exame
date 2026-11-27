@@ -61,6 +61,10 @@ function markRepeats(items){
   const restart=key(p1).length>=2&&key(p1).length<word.length&&key(p1)[0]===word[0]&&distance(key(p1),word.slice(0,key(p1).length),1)<=1;
   if(key(p2)===word&&(key(p1)===word||prev.includes(key(p1))||restart))items.splice(k,1,{type:'repeated',spoken:p1},{type:'correct',expected:it.expected,spoken:p2});
   else if(key(p1)===word&&key(p2)===word)items.splice(k,1,{type:'correct',expected:it.expected,spoken:p1},{type:'repeated',spoken:p2});
+  // One of the two is the word itself and the other is a stray token («عم الماعون»): the word was read correctly
+  // and the stray token is an extra word, not a misreading of this one.
+  else if(key(p2)===word)items.splice(k,1,{type:'extra',spoken:p1},{type:'correct',expected:it.expected,spoken:p2});
+  else if(key(p1)===word)items.splice(k,1,{type:'correct',expected:it.expected,spoken:p1},{type:'extra',spoken:p2});
  }
  for(let k=0;k<items.length;k++){
   if(items[k].type!=='extra')continue;

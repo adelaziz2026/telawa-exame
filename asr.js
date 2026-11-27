@@ -4,6 +4,10 @@
 // Each model downloads once on first use and is then cached for offline use.
 const LIB='https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1';
 // The quantized encoders need an operator WASM lacks, so encoders stay fp32 and only the decoders are quantized.
+// On ordinary readers (451 recordings by 57 non-professional readers, sobolev210/quran-recitation-errors) the word
+// error rate is 28.6% for «accurate», ~28% for «best» and 40.7% for «fast» (34.1% / 33.8% / 45.6% before the speech
+// gate stopped rejecting recitation with no silence around it). Fine-tuning whisper-base further on 15,000 Tarteel.io
+// user recordings did not beat it on readers and reciters it had not seen (Training/asr), so these stay.
 const MODELS={
  // whisper-base: fewer misheard words on quiet or noisy recordings (~160 MB).
  accurate:{id:'aaqibhabib/whisper-base-ar-quran-onnx',options:{}},
@@ -58,9 +62,20 @@ function prepare(audio){
  const rms=energy(audio),sorted=[...rms].sort((a,b)=>a-b),floor=sorted[Math.floor(sorted.length*0.1)]||0,peak=sorted.at(-1)||0;
  const threshold=Math.max(floor*3,peak*0.1,0.003),edge=Math.max(floor*2,peak*0.04,0.002);
  const voiced=rms.filter(r=>r>threshold).length;
- if(voiced*FRAME<0.3*SR||peak<floor*4)return null;
- const first=rms.findIndex(r=>r>edge),last=rms.length-1-[...rms].reverse().findIndex(r=>r>edge);
- const start=Math.max(0,first*FRAME-0.25*SR),end=Math.min(audio.length,(last+1)*FRAME+0.5*SR);
+ let start=0,end=audio.length;
+ if(voiced*FRAME<0.3*SR||peak<floor*4){
+  // No quiet stretch to measure the noise floor against: recitation that fills the whole recording (started
+  // straight away, or a fan or street behind it) has its quietest frames inside the speech. Measured on 451 recordings
+  // by 57 ordinary readers, 55 (12%) were rejected as silent and scored as all words missing. Speech still rises and
+  // falls with the syllables in the upper frequencies, which steady noise and low rumble do not: with the low
+  // frequencies taken out, the loud 10% of frames are over twice (e^0.8) as loud as the quiet 10%. Such audio is kept whole.
+  const hp=new Float32Array(audio.length);for(let i=1;i<audio.length;i++)hp[i]=audio[i]-0.95*audio[i-1];
+  const e=energy(hp).sort((a,b)=>a-b),p=q=>e[Math.floor(e.length*q)]||0;
+  if(!(peak>=0.02&&Math.log((p(0.9)+1e-5)/(p(0.1)+1e-5))>=0.8))return null;
+ }else{
+  const first=rms.findIndex(r=>r>edge),last=rms.length-1-[...rms].reverse().findIndex(r=>r>edge);
+  start=Math.max(0,first*FRAME-0.25*SR);end=Math.min(audio.length,(last+1)*FRAME+0.5*SR);
+ }
  const clip=audio.slice(start,end);let max=0;for(const v of clip)max=Math.max(max,Math.abs(v));
  // Normalise loudness so quiet recitation is not mistaken for noise.
  const gain=Math.min(20,0.9/(max||1));
